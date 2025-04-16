@@ -16,7 +16,7 @@ import (
 )
 
 const serverName = "rescand"
-const defaultConfigFile = "/etc/rescand.conf"
+const defaultConfigFile = "/etc/rescand/config.yaml"
 const defaultLogFile = "/var/log/rescand.log"
 const defaultAddress = "127.0.0.1"
 const defaultPort = 2017
