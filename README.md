@@ -1,0 +1,2 @@
+# rescand
+rescan daemon
