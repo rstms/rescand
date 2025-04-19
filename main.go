@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -22,6 +24,8 @@ const defaultAddress = "127.0.0.1"
 const defaultPort = 2017
 const SHUTDOWN_TIMEOUT = 5
 const Version = "0.0.4"
+const defaultServerCert = "/etc/rescand/rescand.pem"
+const defaultServerKey = "/etc/rescand/rescand.key"
 
 var Verbose bool
 var Debug bool
@@ -86,32 +90,7 @@ func succeed(w http.ResponseWriter, message string, result interface{}) {
 	json.NewEncoder(w).Encode(result)
 }
 
-func checkClientCert(w http.ResponseWriter, r *http.Request) bool {
-	if InsecureSkipClientCertificateValidation {
-		return true
-	}
-	usernameHeader, ok := r.Header["X-Client-Cert-Dn"]
-	if !ok {
-		fail(w, "system", "client certificate check", "missing client cert DN", http.StatusBadRequest)
-		return false
-	}
-
-	if Verbose {
-		log.Printf("client cert dn: %s\n", usernameHeader[0])
-	}
-
-	if usernameHeader[0] == "CN=filterctl" || usernameHeader[0] == "CN=mabctl" {
-		return true
-	}
-
-	fail(w, "system", "client certificate check", fmt.Sprintf("client cert (%s) != filterctl", usernameHeader[0]), http.StatusBadRequest)
-	return false
-}
-
 func handlePostRescan(w http.ResponseWriter, r *http.Request) {
-	if !checkClientCert(w, r) {
-		return
-	}
 	var request RescanRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
@@ -147,9 +126,6 @@ func handlePostRescan(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleGetStatus(w http.ResponseWriter, r *http.Request) {
-	if !checkClientCert(w, r) {
-		return
-	}
 	requestString := "status request"
 
 	if Verbose {
@@ -174,10 +150,33 @@ func handleGetStatus(w http.ResponseWriter, r *http.Request) {
 func runServer(addr *string, port *int) {
 
 	listen := fmt.Sprintf("%s:%d", *addr, *port)
-	server := http.Server{
-		Addr: listen,
+	serverCertFile := viper.GetString("server_cert")
+	serverKeyFile := viper.GetString("server_key")
+	caFile := viper.GetString("ca")
+	var server http.Server
+	if InsecureSkipClientCertificateValidation {
+		server = http.Server{
+			Addr: listen,
+		}
+	} else {
+		caCert, err := os.ReadFile(caFile)
+		if err != nil {
+			log.Fatalf("failed reading CA file '%s': %v", caFile, err)
+		}
+		caCertPool := x509.NewCertPool()
+		ok := caCertPool.AppendCertsFromPEM(caCert)
+		if !ok {
+			log.Fatalf("failed appending CA to cert pool: %v", err)
+		}
+		tlsConfig := &tls.Config{
+			ClientAuth: tls.RequireAndVerifyClientCert,
+			ClientCAs:  caCertPool,
+		}
+		server = http.Server{
+			Addr:      listen,
+			TLSConfig: tlsConfig,
+		}
 	}
-
 	http.HandleFunc("POST /rescan/", handlePostRescan)
 	http.HandleFunc("GET /status/", handleGetStatus)
 
@@ -186,10 +185,18 @@ func runServer(addr *string, port *int) {
 		if Debug {
 			mode = "debug"
 		}
-		log.Printf("listening on %s in %s mode\n", listen, mode)
-		err := server.ListenAndServe()
-		if err != nil && err != http.ErrServerClosed {
-			log.Fatalln("ListenAndServe failed: ", err)
+		if InsecureSkipClientCertificateValidation {
+			log.Printf("listening on %s in %s mode\n", listen, mode)
+			err := server.ListenAndServe()
+			if err != nil && err != http.ErrServerClosed {
+				log.Fatalln("ListenAndServe failed: ", err)
+			}
+		} else {
+			log.Printf("listening on %s in TLS %s mode\n", listen, mode)
+			err := server.ListenAndServeTLS(serverCertFile, serverKeyFile)
+			if err != nil && err != http.ErrServerClosed {
+				log.Fatalln("ListenAndServeTLS failed: ", err)
+			}
 		}
 	}()
 
@@ -260,6 +267,9 @@ func main() {
 		log.Fatalf("failed reading my hostname: %v", err)
 	}
 	viper.SetDefault("hostname", hostname)
+
+	viper.SetDefault("server_cert", defaultServerCert)
+	viper.SetDefault("server_key", defaultServerKey)
 
 	if !*debugFlag {
 		daemonize(logFileFlag, addr, port)

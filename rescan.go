@@ -581,9 +581,11 @@ func generateOutputPath(messageFile *MessageFile) (string, error) {
 
 // replace original with modified, preserving original as backup
 func replaceFile(messageFile MessageFile, modified, backup string) error {
-	err := os.Link(messageFile.Pathname, backup)
+
+	backupFilename := generateBackupFilename(backup)
+	err := os.Link(messageFile.Pathname, backupFilename)
 	if err != nil {
-		return fmt.Errorf("failed linking '%s' -> '%s' : %v", messageFile.Pathname, backup, err)
+		return fmt.Errorf("failed linking '%s' -> '%s' : %v", messageFile.Pathname, backupFilename, err)
 	}
 	err = os.Chtimes(modified, time.Now(), messageFile.Info.ModTime())
 	if err != nil {
@@ -602,4 +604,17 @@ func replaceFile(messageFile MessageFile, modified, backup string) error {
 		return fmt.Errorf("failed moving '%s' -> '%s' : %v", modified, messageFile.Pathname, err)
 	}
 	return nil
+}
+
+func generateBackupFilename(backup string) string {
+	version := 0
+	backupFilename := backup
+	for {
+		_, err := os.Stat(backupFilename)
+		if err != nil {
+			return backupFilename
+		}
+		version++
+		backupFilename = fmt.Sprintf("%s.%d", backup, version)
+	}
 }
