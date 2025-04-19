@@ -31,6 +31,9 @@ var Verbose bool
 var Debug bool
 var InsecureSkipClientCertificateValidation bool
 
+var serverState string
+var serverBanner string
+
 var configFile string
 
 var (
@@ -67,6 +70,8 @@ type RescanRequest struct {
 
 type StatusResponse struct {
 	Response
+	Banner string
+	State  string
 }
 
 func fail(w http.ResponseWriter, user, request, message string, status int) {
@@ -135,7 +140,9 @@ func handleGetStatus(w http.ResponseWriter, r *http.Request) {
 	response := StatusResponse{}
 	response.Success = true
 	response.User = "rescand"
-	response.Message = "status: groovy"
+	response.Message = "status: running"
+	response.Banner = serverBanner
+	response.State = serverState
 	response.Request = requestString
 
 	if Verbose {
@@ -186,13 +193,15 @@ func runServer(addr *string, port *int) {
 			mode = "debug"
 		}
 		if InsecureSkipClientCertificateValidation {
-			log.Printf("listening on %s in %s mode\n", listen, mode)
+			serverState = fmt.Sprintf("listening on %s in %s mode", listen, mode)
+			log.Println(serverState)
 			err := server.ListenAndServe()
 			if err != nil && err != http.ErrServerClosed {
 				log.Fatalln("ListenAndServe failed: ", err)
 			}
 		} else {
-			log.Printf("listening on %s in TLS %s mode\n", listen, mode)
+			serverState = fmt.Sprintf("listening on %s in TLS %s mode", listen, mode)
+			log.Println(serverState)
 			err := server.ListenAndServeTLS(serverCertFile, serverKeyFile)
 			if err != nil && err != http.ErrServerClosed {
 				log.Fatalln("ListenAndServeTLS failed: ", err)
@@ -246,7 +255,8 @@ func main() {
 	Debug = *debugFlag
 	InsecureSkipClientCertificateValidation = *insecureFlag
 
-	log.Printf("%s v%s, uid=%d gid=%d started as PID %d\n", serverName, Version, os.Getuid(), os.Getgid(), os.Getpid())
+	serverBanner = fmt.Sprintf("%s v%s, uid=%d gid=%d started as PID %d", serverName, Version, os.Getuid(), os.Getgid(), os.Getpid())
+	log.Println(serverBanner)
 
 	if InsecureSkipClientCertificateValidation {
 		log.Printf("WARNING: client certificate validation disabled\n")
