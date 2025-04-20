@@ -58,7 +58,7 @@ func NewAPIClient() (*APIClient, error) {
 	}
 
 	api := APIClient{
-		URL: viper.GetString("filterctld_url"),
+		URL: viper.GetString("filterctl_url"),
 	}
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
