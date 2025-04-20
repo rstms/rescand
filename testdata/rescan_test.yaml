@@ -1,0 +1,13 @@
+cert: /etc/rescand/filterctl.pem
+key: /etc/rescand/filterctl.key
+ca: /etc/ssl/keymaster.pem
+server_cert: /etc/rescand/rescand.pem
+server_key: /etc/rescand/rescand.key
+verbose: true
+debug: true
+filterctl_url: https://bitbucket.rstms.net:4443
+
+test_message_id: "6a02d96f77c205672c8de8621.7dea5c0609.20240319004455.733b0b9d62.95e7f36b@mail50.atl31.mcdlv.net"
+test_dir: "/home/mkrueger/Maildir/.testdata"
+test_email: "mkrueger@rstms.net"
+test_path: "/testdata"

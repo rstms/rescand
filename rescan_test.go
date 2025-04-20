@@ -1,9 +1,12 @@
 package main
 
 import (
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
+	"io"
 	"log"
 	"os"
+	"path"
 	"syscall"
 	"testing"
 	"time"
@@ -125,4 +128,37 @@ func TestReplaceFile(t *testing.T) {
 	_, err = os.Stat(modified)
 	require.NotNil(t, err, "expected modified file not to exist")
 
+}
+
+func copyFile(t *testing.T, src, dst string) {
+	srcFile, err := os.Open(src)
+	require.Nil(t, err)
+	defer srcFile.Close()
+	dstFile, err := os.Create(dst)
+	require.Nil(t, err)
+	defer dstFile.Close()
+	_, err = io.Copy(dstFile, srcFile)
+	require.Nil(t, err)
+}
+
+func TestRescanMessage(t *testing.T) {
+
+	viper.SetConfigFile("testdata/rescan_test.yaml")
+	err := viper.ReadInConfig()
+
+	testDir := viper.GetString("test_dir")
+	email := viper.GetString("test_email")
+	messageId := viper.GetString("test_message_id")
+	testPath := viper.GetString("test_path")
+
+	err = os.RemoveAll(testDir)
+	require.Nil(t, err)
+	err = os.MkdirAll(path.Join(testDir, "cur"), 0755)
+	require.Nil(t, err)
+	copyFile(t, "testdata/message", path.Join(testDir, "cur", "message"))
+
+	success, fail, err := Rescan(email, testPath, []string{messageId})
+	require.Nil(t, err)
+	require.Equal(t, success, 1)
+	require.Equal(t, fail, 0)
 }
