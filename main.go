@@ -23,7 +23,7 @@ const defaultLogFile = "/var/log/rescand.log"
 const defaultAddress = "127.0.0.1"
 const defaultPort = 2017
 const SHUTDOWN_TIMEOUT = 5
-const Version = "0.0.6"
+const Version = "0.0.7"
 const defaultServerCert = "/etc/rescand/rescand.pem"
 const defaultServerKey = "/etc/rescand/rescand.key"
 
