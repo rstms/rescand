@@ -131,14 +131,17 @@ func TestReplaceFile(t *testing.T) {
 }
 
 func copyFile(t *testing.T, src, dst string) {
+	srcInfo, err := os.Stat(src)
+	require.Nil(t, err)
 	srcFile, err := os.Open(src)
 	require.Nil(t, err)
 	defer srcFile.Close()
 	dstFile, err := os.Create(dst)
 	require.Nil(t, err)
-	defer dstFile.Close()
 	_, err = io.Copy(dstFile, srcFile)
 	require.Nil(t, err)
+	dstFile.Close()
+	err = os.Chtimes(dst, time.Now(), srcInfo.ModTime())
 }
 
 func TestRescanMessage(t *testing.T) {

@@ -8,7 +8,9 @@ import (
 	"flag"
 	"fmt"
 	"github.com/rstms/go-daemon"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -18,23 +20,21 @@ import (
 )
 
 const serverName = "rescand"
-const defaultConfigFile = "/etc/rescand/config.yaml"
-const defaultLogFile = "/var/log/rescand.log"
-const defaultAddress = "127.0.0.1"
-const defaultPort = 2017
-const SHUTDOWN_TIMEOUT = 5
 const Version = "0.0.8"
-const defaultServerCert = "/etc/rescand/rescand.pem"
-const defaultServerKey = "/etc/rescand/rescand.key"
+
+const DEFAULT_CONFIG_FILE = "/etc/rescand/config.yaml"
+
+const DEFAULT_LOG_FILE = "/var/log/rescand.log"
+const DEFAULT_ADDRESS = "127.0.0.1"
+const DEFAULT_PORT = 2017
+const DEFAULT_SERVER_CERT = "/etc/rescand/rescand.pem"
+const DEFAULT_SERVER_KEY = "/etc/rescand/rescand.key"
+
+const SHUTDOWN_TIMEOUT = 5
 
 var Verbose bool
-var Debug bool
-var InsecureSkipClientCertificateValidation bool
-
 var serverState string
 var serverBanner string
-
-var configFile string
 
 var (
 	signalFlag = flag.String("s", "", `send signal:
@@ -154,14 +154,28 @@ func handleGetStatus(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func runServer(addr *string, port *int) {
+func runServer() {
 
-	listen := fmt.Sprintf("%s:%d", *addr, *port)
+	serverBanner = fmt.Sprintf("%s v%s uid=%d gid=%d started as PID %d", serverName, Version, os.Getuid(), os.Getgid(), os.Getpid())
+	log.Println(serverBanner)
+
+	if viper.GetBool("verbose") {
+		log.Printf("config: %s\n", viper.ConfigFileUsed())
+	}
+
+	addr := viper.GetString("addr")
+	port := viper.GetInt("port")
+	listen := fmt.Sprintf("%s:%d", addr, port)
 	serverCertFile := viper.GetString("server_cert")
 	serverKeyFile := viper.GetString("server_key")
 	caFile := viper.GetString("ca")
 	var server http.Server
-	if InsecureSkipClientCertificateValidation {
+
+	if viper.GetBool("insecure") {
+		if !viper.GetBool("debug") {
+			log.Fatalf("insecure flag only allowed in debug mode")
+		}
+		log.Printf("WARNING: client certificate validation disabled\n")
 		server = http.Server{
 			Addr: listen,
 		}
@@ -189,10 +203,10 @@ func runServer(addr *string, port *int) {
 
 	go func() {
 		mode := "daemon"
-		if Debug {
+		if viper.GetBool("debug") {
 			mode = "debug"
 		}
-		if InsecureSkipClientCertificateValidation {
+		if viper.GetBool("insecure") {
 			serverState = fmt.Sprintf("listening on %s in %s mode", listen, mode)
 			log.Println(serverState)
 			err := server.ListenAndServe()
@@ -234,72 +248,90 @@ func reloadHandler(sig os.Signal) error {
 }
 
 func main() {
-	addr := flag.String("addr", defaultAddress, "listen address")
-	port := flag.Int("port", defaultPort, "listen port")
-	debugFlag := flag.Bool("debug", false, "run in foreground mode")
-	verboseFlag := flag.Bool("verbose", false, "verbose mode")
-	configFileFlag := flag.String("config", defaultConfigFile, "rspamd class config file")
-	logFileFlag := flag.String("logfile", defaultLogFile, "log file full pathname")
-	versionFlag := flag.Bool("version", false, "output version")
-	insecureFlag := flag.Bool("insecure", false, "skip client certificate validation")
 
-	flag.Parse()
+	var configFilename string
+	pflag.String("addr", DEFAULT_ADDRESS, "listen address")
+	pflag.Int("port", DEFAULT_PORT, "listen port")
+	pflag.BoolP("debug", "d", false, "run in foreground mode logging to stdout")
+	pflag.BoolP("verbose", "v", false, "verbose mode")
+	pflag.Bool("insecure", false, "disable certificate validation")
+	pflag.String("logfile", DEFAULT_LOG_FILE, fmt.Sprintf("config file (default: %s)", DEFAULT_LOG_FILE))
+	pflag.StringVarP(&configFilename, "config", "c", DEFAULT_CONFIG_FILE, fmt.Sprintf("config file (default: %s)", DEFAULT_CONFIG_FILE))
+	pflag.Parse()
+	initConfig(configFilename)
 
-	if *versionFlag {
-		fmt.Printf("%s v%s\n", os.Args[0], Version)
-		os.Exit(0)
+	for _, command := range pflag.Args() {
+		switch command {
+		case "version":
+			fmt.Printf("%s v%s\n", os.Args[0], Version)
+			os.Exit(0)
+		case "config":
+			showConfig()
+			os.Exit(0)
+		default:
+			log.Fatalf("unknown command: '%s'\n", command)
+		}
+
 	}
 
-	configFile = *configFileFlag
-	Verbose = *verboseFlag
-	Debug = *debugFlag
-	InsecureSkipClientCertificateValidation = *insecureFlag
-
-	serverBanner = fmt.Sprintf("%s v%s, uid=%d gid=%d started as PID %d", serverName, Version, os.Getuid(), os.Getgid(), os.Getpid())
-	log.Println(serverBanner)
-
-	if InsecureSkipClientCertificateValidation {
-		log.Printf("WARNING: client certificate validation disabled\n")
+	if viper.GetBool("debug") {
+		go runServer()
+		sigs := make(chan os.Signal, 1)
+		signal.Notify(sigs, syscall.SIGTERM)
+		<-sigs
+		shutdown <- struct{}{}
+	} else {
+		daemonize()
 	}
+	os.Exit(0)
+}
+
+func initConfig(configFile string) {
 	viper.SetConfigFile(configFile)
-
+	viper.SetConfigType("yaml")
 	err := viper.ReadInConfig()
 	if err != nil {
 		log.Fatalf("Error reading %s: %v", configFile, err)
 	}
-	if Verbose {
-		viper.Set("verbose", true)
-		log.Printf("viper config: %s\n", viper.ConfigFileUsed())
-	}
-
+	viper.SetEnvPrefix("rescand")
+	viper.AutomaticEnv()
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Fatalf("failed reading my hostname: %v", err)
 	}
 	viper.SetDefault("hostname", hostname)
-
-	viper.SetDefault("server_cert", defaultServerCert)
-	viper.SetDefault("server_key", defaultServerKey)
-
-	if !*debugFlag {
-		daemonize(logFileFlag, addr, port)
-		os.Exit(0)
-	}
-	go runServer(addr, port)
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGTERM)
-	<-sigs
-	shutdown <- struct{}{}
-	os.Exit(0)
+	viper.SetDefault("server_cert", DEFAULT_SERVER_CERT)
+	viper.SetDefault("server_key", DEFAULT_SERVER_KEY)
+	viper.SetDefault("preserve_time", true)
+	viper.BindPFlags(pflag.CommandLine)
+	Verbose = viper.GetBool("verbose")
 }
 
-func daemonize(logFilename, addr *string, port *int) {
+func showConfig() {
+	tempFile, err := os.CreateTemp(os.TempDir(), "rescan-*")
+	if err != nil {
+		log.Fatalf("failed creating temp file: %v", err)
+	}
+	defer tempFile.Close()
+	defer os.Remove(tempFile.Name())
+	err = viper.WriteConfigAs(tempFile.Name())
+	if err != nil {
+		log.Fatalf("failed writing config: %v", err)
+	}
+	fmt.Printf("# %s config: %s\n", serverName, viper.ConfigFileUsed())
+	_, err = io.Copy(os.Stdout, tempFile)
+	if err != nil {
+		log.Fatalf("failed writing config: %v", err)
+	}
+}
+
+func daemonize() {
 
 	daemon.AddCommand(daemon.StringFlag(signalFlag, "stop"), syscall.SIGTERM, stopHandler)
 	daemon.AddCommand(daemon.StringFlag(signalFlag, "reload"), syscall.SIGHUP, reloadHandler)
 
 	ctx := &daemon.Context{
-		LogFileName: *logFilename,
+		LogFileName: viper.GetString("logfile"),
 		LogFilePerm: 0600,
 		WorkDir:     "/",
 		Umask:       007,
@@ -324,7 +356,7 @@ func daemonize(logFilename, addr *string, port *int) {
 	}
 	defer ctx.Release()
 
-	go runServer(addr, port)
+	go runServer()
 
 	err = daemon.ServeSignals()
 	if err != nil {

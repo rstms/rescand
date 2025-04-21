@@ -14,8 +14,6 @@ import (
 
 func InitializeTests(t *testing.T) {
 	log.SetOutput(os.Stdout)
-	Verbose = true
-	InsecureSkipClientCertificateValidation = true
 	viper.SetConfigFile("testdata/config.yaml")
 	viper.ReadInConfig()
 }

@@ -259,15 +259,15 @@ func RescanMessage(client *APIClient, userAddress string, messageFile MessageFil
 		return err
 	}
 
-	fromAddr, err := parseHeaderAddr(&headers, "From")
+	fromAddr, err := parseHeaderAddr(&headers, "From", true)
 	if err != nil {
 		return err
 	}
-	rcptToAddr, err := parseHeaderAddr(&headers, "To")
+	rcptToAddr, err := parseHeaderAddr(&headers, "To", true)
 	if err != nil {
 		return err
 	}
-	deliveredToAddr, err := parseHeaderAddr(&headers, "Delivered-To")
+	deliveredToAddr, err := parseHeaderAddr(&headers, "Delivered-To", false)
 	if err != nil {
 		return err
 	}
@@ -328,6 +328,8 @@ func RescanMessage(client *APIClient, userAddress string, messageFile MessageFil
 			if err != nil {
 				fmt.Errorf("failed reading Raw header: %v", err)
 			}
+			data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
+			log.Printf("\n%s", HexDump(data))
 			_, err = fmt.Fprintf(outfile, "%s", string(data))
 			if err != nil {
 				fmt.Errorf("failed writing header line: %v", err)
@@ -364,12 +366,15 @@ func RescanMessage(client *APIClient, userAddress string, messageFile MessageFil
 func requestRescan(client *APIClient, fromAddr, rcptToAddr, deliveredToAddr, senderIP string, content *[]byte, response *RspamdResponse) error {
 
 	requestHeaders := map[string]string{
-		"settings":   `{"symbols_disabled": ["DATE_IN_PAST"]}`,
-		"IP":         senderIP,
-		"From":       fromAddr,
-		"Rcpt":       rcptToAddr,
-		"Deliver-To": deliveredToAddr,
-		"Hostname":   viper.GetString("hostname"),
+		"settings": `{"symbols_disabled": ["DATE_IN_PAST"]}`,
+		"IP":       senderIP,
+		"From":     fromAddr,
+		"Rcpt":     rcptToAddr,
+		"Hostname": viper.GetString("hostname"),
+	}
+
+	if deliveredToAddr != "" {
+		requestHeaders["Deliver-To"] = deliveredToAddr
 	}
 
 	_, err := client.Post("/rspamc/checkv2", content, response, &requestHeaders)
@@ -511,10 +516,13 @@ func getKeys(header *textproto.Header) []string {
 	return keys
 }
 
-func parseHeaderAddr(header *textproto.Header, key string) (string, error) {
+func parseHeaderAddr(header *textproto.Header, key string, required bool) (string, error) {
 	value := header.Get(key)
 	if value == "" {
-		return "", fmt.Errorf("header not found: %s", key)
+		if required {
+			return "", fmt.Errorf("header not found: %s", key)
+		}
+		return "", nil
 	}
 	emailAddress, err := parseEmailAddress(value)
 	if err != nil {
@@ -557,9 +565,12 @@ func getSenderScore(addr string) (int, error) {
 	return score, nil
 }
 
-// FIXME: this will copy the original to a backup and return the input path
-// for now, write all modified files to a rescan subdir sibling to 'cur'
 func generateOutputPath(messageFile *MessageFile) (string, error) {
+
+	outputMaildir := "/tmp/rescan/
+
+	
+
 	filePath := path.Dir(messageFile.Pathname)
 	fileName := path.Base(messageFile.Pathname)
 	parent := path.Dir(filePath)
@@ -582,14 +593,16 @@ func generateOutputPath(messageFile *MessageFile) (string, error) {
 // replace original with modified, preserving original as backup
 func replaceFile(messageFile MessageFile, modified, backup string) error {
 
-	backupFilename := generateBackupFilename(backup)
+	backupFilename := generateBackupFilename(messageFile, backup)
 	err := os.Link(messageFile.Pathname, backupFilename)
 	if err != nil {
 		return fmt.Errorf("failed linking '%s' -> '%s' : %v", messageFile.Pathname, backupFilename, err)
 	}
-	err = os.Chtimes(modified, time.Now(), messageFile.Info.ModTime())
-	if err != nil {
-		return fmt.Errorf("failed changing modtime of '%s' : %v", modified, err)
+	if viper.GetBool("preserve_time") {
+		err = os.Chtimes(modified, time.Now(), messageFile.Info.ModTime())
+		if err != nil {
+			return fmt.Errorf("failed changing modtime of '%s' : %v", modified, err)
+		}
 	}
 	err = os.Chmod(modified, messageFile.Info.Mode())
 	if err != nil {
