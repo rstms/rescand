@@ -6,13 +6,17 @@ import (
 	"fmt"
 	"github.com/emersion/go-message/textproto"
 	"github.com/spf13/viper"
+	"io"
 	"io/fs"
 	"log"
 	"net"
 	"os"
+	"os/user"
 	"path"
+	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -21,8 +25,10 @@ import (
 
 // RFC says 76; but we append a ] after breaking X-Spam-Score
 const MAX_HEADER_LENGTH = 75
+const TEMP_MAILDIR_ROOT = "/tmp/rescan"
 
 var IP_ADDR_PATTERN = regexp.MustCompile(`^[^[]*\[([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\].*`)
+var FILENAME_PATTERN = regexp.MustCompile(`^(.*),S=[0-9]+,W=[0-9]+:.*$`)
 
 // these structures decode only what we need from the RSPAMD JSON response
 type AddHeader struct {
@@ -60,18 +66,18 @@ type MessageFile struct {
 	GID      uint32
 }
 
-func transformPath(user, folder string) string {
-	var path string
+func transformPath(base, sub, user, folder string) string {
+	var ret string
 	if folder == "/INBOX" {
-		path = fmt.Sprintf("/home/%s/Maildir/cur", user)
+		ret = filepath.Join(base, user, "Maildir", sub)
 	} else {
 		mailDir := strings.ReplaceAll(folder, "/", ".")
-		path = fmt.Sprintf("/home/%s/Maildir/%s/cur", user, mailDir)
+		ret = filepath.Join(base, user, "Maildir", mailDir, sub)
 	}
 	if viper.GetBool("verbose") {
-		log.Printf("transformPath: user=%s folder=%s path=%s\n", user, folder, path)
+		log.Printf("transformPath: base=%s sub=%s user=%s folder=%s ret=%s\n", base, sub, user, folder, ret)
 	}
-	return path
+	return ret
 }
 
 func scanMessageFiles(dir string, messageIds []string) ([]MessageFile, error) {
@@ -91,7 +97,7 @@ func scanMessageFiles(dir string, messageIds []string) ([]MessageFile, error) {
 					return messageFiles, fmt.Errorf("failed reading directory entry: %v", err)
 				}
 				messageFiles = append(messageFiles, MessageFile{
-					Pathname: path.Join(dir, entry.Name()),
+					Pathname: filepath.Join(dir, entry.Name()),
 					Info:     info,
 					UID:      info.Sys().(*syscall.Stat_t).Uid,
 					GID:      info.Sys().(*syscall.Stat_t).Gid,
@@ -107,7 +113,7 @@ func scanMessageFiles(dir string, messageIds []string) ([]MessageFile, error) {
 		}
 		for _, entry := range entries {
 			if !entry.IsDir() {
-				pathname := path.Join(dir, entry.Name())
+				pathname := filepath.Join(dir, entry.Name())
 				mid, err := getMessageId(pathname)
 				if err != nil {
 					return messageFiles, err
@@ -164,7 +170,7 @@ func getMessageId(pathname string) (string, error) {
 	return mid, nil
 }
 
-func Rescan(userAddress, folder string, messageIds []string) (int, int, error) {
+func Rescan(emailAddress, folder string, messageIds []string) (int, int, error) {
 	var successCount int
 	var failCount int
 
@@ -175,12 +181,12 @@ func Rescan(userAddress, folder string, messageIds []string) (int, int, error) {
 		}
 	}
 
-	username, _, found := strings.Cut(userAddress, "@")
+	username, _, found := strings.Cut(emailAddress, "@")
 	if !found {
-		return 0, 0, fmt.Errorf("failed parsing userAddress: %s", userAddress)
+		return 0, 0, fmt.Errorf("failed parsing emailAddress: %s", emailAddress)
 	}
 
-	path := transformPath(username, folder)
+	path := transformPath("/home", "cur", username, folder)
 
 	messageFiles, err := scanMessageFiles(path, messageIds)
 	if err != nil {
@@ -198,14 +204,14 @@ func Rescan(userAddress, folder string, messageIds []string) (int, int, error) {
 
 	for _, messageFile := range messageFiles {
 		wg.Add(1)
-		go func(client *APIClient, userAddress string, messageFile MessageFile) {
+		go func(client *APIClient, username, emailAddress, folder string, messageFile MessageFile) {
 			defer wg.Done()
-			err := RescanMessage(client, userAddress, messageFile)
+			err := RescanMessage(client, username, emailAddress, folder, messageFile)
 			if err != nil {
 				errorChan <- err
 			}
 			successChan <- messageFile.Pathname
-		}(client, userAddress, messageFile)
+		}(client, username, emailAddress, folder, messageFile)
 	}
 
 	go func() {
@@ -237,7 +243,7 @@ func Rescan(userAddress, folder string, messageIds []string) (int, int, error) {
 	return successCount, failCount, nil
 }
 
-func RescanMessage(client *APIClient, userAddress string, messageFile MessageFile) error {
+func RescanMessage(client *APIClient, username, emailAddress, folder string, messageFile MessageFile) error {
 
 	content, err := os.ReadFile(messageFile.Pathname)
 	lines := strings.Split(string(content), "\n")
@@ -259,15 +265,15 @@ func RescanMessage(client *APIClient, userAddress string, messageFile MessageFil
 		return err
 	}
 
-	fromAddr, err := parseHeaderAddr(&headers, "From", true)
+	fromAddr, err := parseHeaderAddr(&headers, "From")
 	if err != nil {
 		return err
 	}
-	rcptToAddr, err := parseHeaderAddr(&headers, "To", true)
+	rcptToAddr, err := parseHeaderAddr(&headers, "To")
 	if err != nil {
 		return err
 	}
-	deliveredToAddr, err := parseHeaderAddr(&headers, "Delivered-To", false)
+	deliveredToAddr, err := parseHeaderAddr(&headers, "Delivered-To")
 	if err != nil {
 		return err
 	}
@@ -283,7 +289,7 @@ func RescanMessage(client *APIClient, userAddress string, messageFile MessageFil
 		return err
 	}
 
-	err = mungeHeaders(client, &headers, userAddress, fromAddr, senderIP, &response, &keys)
+	err = mungeHeaders(client, &headers, emailAddress, fromAddr, senderIP, &response, &keys)
 	if err != nil {
 		return err
 	}
@@ -296,6 +302,7 @@ func RescanMessage(client *APIClient, userAddress string, messageFile MessageFil
 			if err != nil {
 				fmt.Errorf("Raw failed: %v", err)
 			}
+			data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
 			log.Printf("%s", string(data))
 			/*
 				log.Printf("--- BEGIN %s ---\n", fields.Key())
@@ -310,7 +317,11 @@ func RescanMessage(client *APIClient, userAddress string, messageFile MessageFil
 		log.Println("---END CHANGED HEADERS---")
 	}
 
-	outputPath, err := generateOutputPath(&messageFile)
+	outputPath, err := generateOutputPath(username, folder, "cur", &messageFile)
+	if err != nil {
+		return err
+	}
+	backupPath, err := generateOutputPath(username, folder, "backup", &messageFile)
 	if err != nil {
 		return err
 	}
@@ -329,7 +340,6 @@ func RescanMessage(client *APIClient, userAddress string, messageFile MessageFil
 				fmt.Errorf("failed reading Raw header: %v", err)
 			}
 			data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
-			log.Printf("\n%s", HexDump(data))
 			_, err = fmt.Fprintf(outfile, "%s", string(data))
 			if err != nil {
 				fmt.Errorf("failed writing header line: %v", err)
@@ -356,7 +366,7 @@ func RescanMessage(client *APIClient, userAddress string, messageFile MessageFil
 		return err
 	}
 
-	err = replaceFile(messageFile, outputPath, outputPath+".bak")
+	err = replaceFile(messageFile, outputPath, backupPath)
 	if err != nil {
 		return err
 	}
@@ -398,7 +408,7 @@ func requestRescan(client *APIClient, fromAddr, rcptToAddr, deliveredToAddr, sen
 	return nil
 }
 
-func mungeHeaders(client *APIClient, headers *textproto.Header, userAddress, fromAddr, senderIP string, response *RspamdResponse, keys *[]string) error {
+func mungeHeaders(client *APIClient, headers *textproto.Header, emailAddress, fromAddr, senderIP string, response *RspamdResponse, keys *[]string) error {
 
 	// delete headers RSPAM wants to delete
 	for key, _ := range response.Milter.RemoveHeaders {
@@ -476,7 +486,7 @@ func mungeHeaders(client *APIClient, headers *textproto.Header, userAddress, fro
 	}
 	headers.Set("X-SenderScore", fmt.Sprintf("%d", senderScore))
 
-	books, err := client.ScanAddressBooks(userAddress, fromAddr)
+	books, err := client.ScanAddressBooks(emailAddress, fromAddr)
 	if err != nil {
 		return err
 	}
@@ -484,7 +494,7 @@ func mungeHeaders(client *APIClient, headers *textproto.Header, userAddress, fro
 		headers.Add("X-Address-Book", book)
 	}
 
-	class, err := client.ScanSpamClass(userAddress, response.Score)
+	class, err := client.ScanSpamClass(emailAddress, response.Score)
 	if err != nil {
 		return err
 	}
@@ -516,13 +526,10 @@ func getKeys(header *textproto.Header) []string {
 	return keys
 }
 
-func parseHeaderAddr(header *textproto.Header, key string, required bool) (string, error) {
+func parseHeaderAddr(header *textproto.Header, key string) (string, error) {
 	value := header.Get(key)
 	if value == "" {
-		if required {
-			return "", fmt.Errorf("header not found: %s", key)
-		}
-		return "", nil
+		return "", fmt.Errorf("header not found: %s", key)
 	}
 	emailAddress, err := parseEmailAddress(value)
 	if err != nil {
@@ -565,69 +572,154 @@ func getSenderScore(addr string) (int, error) {
 	return score, nil
 }
 
-func generateOutputPath(messageFile *MessageFile) (string, error) {
+func generateOutputPath(username, folder, sub string, messageFile *MessageFile) (string, error) {
 
-	outputMaildir := "/tmp/rescan/
+	outDir := transformPath(TEMP_MAILDIR_ROOT, sub, username, folder)
 
-	
-
-	filePath := path.Dir(messageFile.Pathname)
-	fileName := path.Base(messageFile.Pathname)
-	parent := path.Dir(filePath)
-	dir := path.Base(filePath)
-	if dir != "cur" {
-		return "", fmt.Errorf("dir not cur: path=%s filename=%s parent=%s dir=%s message=%+v\n", filePath, fileName, parent, dir, *messageFile)
-	}
-	outPath := path.Join(parent, "rescan", fileName)
-	outDir := path.Dir(outPath)
 	err := os.MkdirAll(outDir, 0700)
 	if err != nil {
-		return "", fmt.Errorf("failed creating output path: %v", err)
+		return "", fmt.Errorf("failed creating output directory: %v", err)
 	}
-	if viper.GetBool("verbose") {
-		log.Printf("outPath=%s filePath=%s fileName=%s parent=%s dir=%s message=%+v\n", outPath, filePath, fileName, parent, dir, *messageFile)
+
+	err = chownPath(username, TEMP_MAILDIR_ROOT, outDir)
+	if err != nil {
+		return "", err
 	}
-	return outPath, nil
+
+	fileName := path.Base(messageFile.Pathname)
+	var outputPath string
+	if sub == "cur" {
+		// if we're generating the output pathaname, so strip the filename metadata
+		match := FILENAME_PATTERN.FindStringSubmatch(fileName)
+		if len(match) > 1 {
+			fileName = match[1]
+		}
+		outputPath = filepath.Join(outDir, fileName)
+	} else {
+		// we're generating the backup pathname, so ensure no clobber
+		outputPath = generateBackupFilename(filepath.Join(outDir, fileName))
+	}
+	return outputPath, nil
 }
 
-// replace original with modified, preserving original as backup
-func replaceFile(messageFile MessageFile, modified, backup string) error {
+func chownPath(username, base, maildirPath string) error {
 
-	backupFilename := generateBackupFilename(messageFile, backup)
-	err := os.Link(messageFile.Pathname, backupFilename)
+	userInfo, err := user.Lookup(username)
 	if err != nil {
-		return fmt.Errorf("failed linking '%s' -> '%s' : %v", messageFile.Pathname, backupFilename, err)
+		return fmt.Errorf("failed user lookup: %v", err)
 	}
-	if viper.GetBool("preserve_time") {
-		err = os.Chtimes(modified, time.Now(), messageFile.Info.ModTime())
+	uid, err := strconv.Atoi(userInfo.Uid)
+	if err != nil {
+		return fmt.Errorf("failed uid conversion: %v", err)
+	}
+	gid, err := strconv.Atoi(userInfo.Gid)
+	if err != nil {
+		return fmt.Errorf("failed gid conversion: %v", err)
+	}
+
+	err = filepath.Walk(filepath.Join(TEMP_MAILDIR_ROOT, username), func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return fmt.Errorf("failed changing modtime of '%s' : %v", modified, err)
+			return err
 		}
-	}
-	err = os.Chmod(modified, messageFile.Info.Mode())
+		if info.IsDir() {
+			err = os.Chown(path, uid, gid)
+			if err != nil {
+				return fmt.Errorf("failed maildir chown: %v", err)
+			}
+		}
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("failed changing mode bits of '%s' : %v", modified, err)
+		return fmt.Errorf("maildir chown walk failed: %v", err)
 	}
-	err = os.Chown(modified, int(messageFile.UID), int(messageFile.GID))
+
+	return nil
+}
+
+// copy src to dst preserving time and ownership
+func copyFile(dst, src string) error {
+	srcInfo, err := os.Stat(src)
 	if err != nil {
-		return fmt.Errorf("failed changing ownership of '%s' : %v", modified, err)
+		return fmt.Errorf("copyFile: src Stat failed: %v", err)
 	}
-	err = os.Rename(modified, messageFile.Pathname)
+	srcFile, err := os.Open(src)
 	if err != nil {
-		return fmt.Errorf("failed moving '%s' -> '%s' : %v", modified, messageFile.Pathname, err)
+		return fmt.Errorf("copyFile: src Open failed: %v", err)
+	}
+	defer srcFile.Close()
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("copyFile: dst Create failed: %v", err)
+	}
+	_, err = io.Copy(dstFile, srcFile)
+	if err != nil {
+		return fmt.Errorf("copyFile: Copy failed: %v", err)
+	}
+	dstFile.Close()
+	err = os.Chtimes(dst, time.Now(), srcInfo.ModTime())
+	if err != nil {
+		return fmt.Errorf("copyFile: Chtimes failed: %v", err)
+	}
+	uid := srcInfo.Sys().(*syscall.Stat_t).Uid
+	gid := srcInfo.Sys().(*syscall.Stat_t).Gid
+	err = os.Chown(dst, int(uid), int(gid))
+	if err != nil {
+		return fmt.Errorf("copyFile: Chown failed: %v", err)
 	}
 	return nil
 }
 
-func generateBackupFilename(backup string) string {
-	version := 0
-	backupFilename := backup
-	for {
-		_, err := os.Stat(backupFilename)
+// replace original with modified, preserving original as backup
+func replaceFile(messageFile MessageFile, outputPath, backupPath string) error {
+
+	fmt.Printf("REPLACE_FILE\ninput=%s\noutput=%s\nbackup=%s\n", messageFile.Pathname, outputPath, backupPath)
+
+	// copy original file to backup
+	err := copyFile(backupPath, messageFile.Pathname)
+	if err != nil {
+		return err
+	}
+
+	panic("howdy")
+
+	// remove original file with dovecot
+	// import the modified file with dovecot
+
+	/*
+		err := os.Link(messageFile.Pathname, backupFilename)
 		if err != nil {
-			return backupFilename
+			return fmt.Errorf("failed linking '%s' -> '%s' : %v", messageFile.Pathname, backupFilename, err)
+		}
+		if viper.GetBool("preserve_time") {
+			err = os.Chtimes(modified, time.Now(), messageFile.Info.ModTime())
+			if err != nil {
+				return fmt.Errorf("failed changing modtime of '%s' : %v", modified, err)
+			}
+		}
+		err = os.Chmod(modified, messageFile.Info.Mode())
+		if err != nil {
+			return fmt.Errorf("failed changing mode bits of '%s' : %v", modified, err)
+		}
+		err = os.Chown(modified, int(messageFile.UID), int(messageFile.GID))
+		if err != nil {
+			return fmt.Errorf("failed changing ownership of '%s' : %v", modified, err)
+		}
+		err = os.Rename(modified, messageFile.Pathname)
+		if err != nil {
+			return fmt.Errorf("failed moving '%s' -> '%s' : %v", modified, messageFile.Pathname, err)
+		}
+	*/
+	return nil
+}
+
+func generateBackupFilename(modified string) string {
+	version := 0
+	for {
+		backup := fmt.Sprintf("%s.%d", modified, version)
+		_, err := os.Stat(backup)
+		if err != nil {
+			return backup
 		}
 		version++
-		backupFilename = fmt.Sprintf("%s.%d", backup, version)
 	}
 }

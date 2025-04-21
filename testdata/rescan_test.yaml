@@ -7,7 +7,9 @@ verbose: true
 debug: true
 filterctl_url: https://bitbucket.rstms.net:4443
 
-test_message_id: "6a02d96f77c205672c8de8621.7dea5c0609.20240319004455.733b0b9d62.95e7f36b@mail50.atl31.mcdlv.net"
-test_dir: "/home/mkrueger/Maildir/.testdata"
-test_email: "mkrueger@rstms.net"
-test_path: "/testdata"
+test:
+  email: mkrueger@rstms.net
+  path: "/testdata"
+  maildir: /home/mkrueger/Maildir/.testdata
+  file: cur/1745204839.M337913P37678.mailbox.rstms.net,S=13531,W=13785:2,Sb
+  message_id: 01000193f0bcbbc2-4427d1e6-c9aa-4ee2-8852-9d2c529aca41-000000@email.amazonses.com

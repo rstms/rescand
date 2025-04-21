@@ -4,7 +4,3 @@ ca: /etc/ssl/keymaster.pem
 verbose: true
 debug: true
 filterctld_url: https://bitbucket.rstms.net:4443
-
-test:
-  username: mkrueger@rstms.net
-  message_id: 0100019110a8e144-f106a68f-b3dd-46fc-9468-042cc93f2c30-000000@email.amazonses.com
