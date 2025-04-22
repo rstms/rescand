@@ -22,8 +22,9 @@ var ADDR_PATTERN = regexp.MustCompile(`^.*<([^>]*)>.*$`)
 var EMAIL_PATTERN = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 
 type APIClient struct {
-	Client *http.Client
-	URL    string
+	Client  *http.Client
+	URL     string
+	Headers map[string]string
 }
 
 func GetViperPath(key string) (string, error) {
@@ -42,7 +43,7 @@ func GetViperPath(key string) (string, error) {
 
 }
 
-func NewAPIClient() (*APIClient, error) {
+func NewAPIClient(url string, headers *map[string]string) (*APIClient, error) {
 
 	certFile, err := GetViperPath("cert")
 	if err != nil {
@@ -58,7 +59,14 @@ func NewAPIClient() (*APIClient, error) {
 	}
 
 	api := APIClient{
-		URL: viper.GetString("filterctl_url"),
+		URL:     url,
+		Headers: make(map[string]string),
+	}
+
+	if headers != nil {
+		for key, value := range *headers {
+			api.Headers[key] = value
+		}
 	}
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
@@ -136,6 +144,10 @@ func (a *APIClient) request(method, path string, requestData, responseData inter
 	request, err := http.NewRequest(method, a.URL+path, requestBuffer)
 	if err != nil {
 		return "", fmt.Errorf("failed creating %s request: %v", method, err)
+	}
+
+	for key, value := range a.Headers {
+		request.Header.Add(key, value)
 	}
 
 	if headers != nil {

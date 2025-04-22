@@ -26,6 +26,7 @@ import (
 // RFC says 76; but we append a ] after breaking X-Spam-Score
 const MAX_HEADER_LENGTH = 75
 const TEMP_MAILDIR_ROOT = "/tmp/rescan"
+const MAILDIR_ROOT = "/home"
 
 var IP_ADDR_PATTERN = regexp.MustCompile(`^[^[]*\[([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\].*`)
 var FILENAME_PATTERN = regexp.MustCompile(`^(.*),S=[0-9]+,W=[0-9]+:.*$`)
@@ -66,7 +67,7 @@ type MessageFile struct {
 	GID      uint32
 }
 
-func transformPath(base, sub, user, folder string) string {
+func transformPath(base, user, folder, sub string) string {
 	var ret string
 	if folder == "/INBOX" {
 		ret = filepath.Join(base, user, "Maildir", sub)
@@ -75,7 +76,7 @@ func transformPath(base, sub, user, folder string) string {
 		ret = filepath.Join(base, user, "Maildir", mailDir, sub)
 	}
 	if viper.GetBool("verbose") {
-		log.Printf("transformPath: base=%s sub=%s user=%s folder=%s ret=%s\n", base, sub, user, folder, ret)
+		log.Printf("transformPath: base=%s user=%s folder=%s sub=%s ret=%s\n", base, user, folder, sub, ret)
 	}
 	return ret
 }
@@ -186,14 +187,15 @@ func Rescan(emailAddress, folder string, messageIds []string) (int, int, error) 
 		return 0, 0, fmt.Errorf("failed parsing emailAddress: %s", emailAddress)
 	}
 
-	path := transformPath("/home", "cur", username, folder)
+	path := transformPath(MAILDIR_ROOT, username, folder, "cur")
 
 	messageFiles, err := scanMessageFiles(path, messageIds)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed scanning message files")
 	}
 
-	client, err := NewAPIClient()
+	url := viper.GetString("filterctld_url")
+	client, err := NewAPIClient(url, nil)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -317,7 +319,7 @@ func RescanMessage(client *APIClient, username, emailAddress, folder string, mes
 		log.Println("---END CHANGED HEADERS---")
 	}
 
-	outputPath, err := generateOutputPath(username, folder, "cur", &messageFile)
+	outputPath, err := generateOutputPath(username, folder, "tmp", &messageFile)
 	if err != nil {
 		return err
 	}
@@ -574,30 +576,30 @@ func getSenderScore(addr string) (int, error) {
 
 func generateOutputPath(username, folder, sub string, messageFile *MessageFile) (string, error) {
 
-	outDir := transformPath(TEMP_MAILDIR_ROOT, sub, username, folder)
+	outDir := transformPath(MAILDIR_ROOT, username, folder, sub)
 
 	err := os.MkdirAll(outDir, 0700)
 	if err != nil {
 		return "", fmt.Errorf("failed creating output directory: %v", err)
 	}
 
-	err = chownPath(username, TEMP_MAILDIR_ROOT, outDir)
+	err = chownPath(username, MAILDIR_ROOT, outDir)
 	if err != nil {
 		return "", err
 	}
 
 	fileName := path.Base(messageFile.Pathname)
 	var outputPath string
-	if sub == "cur" {
-		// if we're generating the output pathaname, so strip the filename metadata
+	if sub == "backup" {
+		// we're generating the backup pathname, so ensure no clobber
+		outputPath = generateBackupFilename(filepath.Join(outDir, fileName))
+	} else {
+		// we're generating the rescan output pathname, so strip the filename metadata
 		match := FILENAME_PATTERN.FindStringSubmatch(fileName)
 		if len(match) > 1 {
 			fileName = match[1]
 		}
 		outputPath = filepath.Join(outDir, fileName)
-	} else {
-		// we're generating the backup pathname, so ensure no clobber
-		outputPath = generateBackupFilename(filepath.Join(outDir, fileName))
 	}
 	return outputPath, nil
 }
@@ -680,7 +682,11 @@ func replaceFile(messageFile MessageFile, outputPath, backupPath string) error {
 		return err
 	}
 
-	panic("howdy")
+	// use doveadm to import the message from outputPath
+
+	fmt.Printf("WARNING: replaceFile is incomplete")
+
+	return nil
 
 	// remove original file with dovecot
 	// import the modified file with dovecot

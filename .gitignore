@@ -2,3 +2,5 @@ rescand
 notes
 testdata/cur
 testdata/rescan
+cruft
+postactivate
