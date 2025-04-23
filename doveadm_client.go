@@ -179,8 +179,7 @@ func (c *DoveadmClient) MessageDelete(user, mailbox, messageId string) error {
 	if err != nil {
 		return err
 	}
-	return nil
-	//return c.MessageExpunge(user, mailbox, messageId)
+	return c.MessageExpunge(user, mailbox, messageId)
 }
 
 func (c *DoveadmClient) IsMessagePresent(user, mailbox, messageId string) (bool, error) {
