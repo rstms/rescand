@@ -155,3 +155,42 @@ func (c *DoveadmClient) MessageSetFlag(user, mailbox, messageId, flag string, se
 	_, err := c.sendCommand(command, &args)
 	return err
 }
+
+func (c *DoveadmClient) MessageExpunge(user, mailbox, messageId string) error {
+	args := map[string]interface{}{
+		"user":  user,
+		"query": []string{"MAILBOX", mailbox, "HEADER", "MESSAGE-ID", messageId},
+	}
+	_, err := c.sendCommand("expunge", &args)
+	return err
+}
+
+func (c *DoveadmClient) MailboxExpunge(user, mailbox string) error {
+	args := map[string]interface{}{
+		"user":  user,
+		"query": []string{"MAILBOX", mailbox},
+	}
+	_, err := c.sendCommand("expunge", &args)
+	return err
+}
+
+func (c *DoveadmClient) MessageDelete(user, mailbox, messageId string) error {
+	err := c.MessageSetFlag(user, mailbox, messageId, "\\Deleted", true)
+	if err != nil {
+		return err
+	}
+	return nil
+	//return c.MessageExpunge(user, mailbox, messageId)
+}
+
+func (c *DoveadmClient) IsMessagePresent(user, mailbox, messageId string) (bool, error) {
+	args := map[string]interface{}{
+		"user":  user,
+		"query": []string{"MAILBOX", mailbox, "HEADER", "MESSAGE-ID", messageId},
+	}
+	results, err := c.sendCommand("search", &args)
+	if err != nil {
+		return false, err
+	}
+	return len(*results) > 0, nil
+}

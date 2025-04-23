@@ -33,6 +33,7 @@ const DEFAULT_SERVER_KEY = "/etc/rescand/rescand.key"
 const SHUTDOWN_TIMEOUT = 5
 
 var Verbose bool
+var Debug bool
 var serverState string
 var serverBanner string
 
@@ -68,6 +69,16 @@ type RescanRequest struct {
 	MessageIds []string
 }
 
+type RescanResponse struct {
+	Response
+	Status RescanStatus
+}
+
+type RescanStatusResponse struct {
+	Response
+	Status map[string]RescanStatus
+}
+
 type StatusResponse struct {
 	Response
 	Banner string
@@ -95,6 +106,17 @@ func succeed(w http.ResponseWriter, message string, result interface{}) {
 	json.NewEncoder(w).Encode(result)
 }
 
+func returnRescanStatus(w http.ResponseWriter, rescanId string, response *RescanResponse) {
+	status, ok := GetRescanStatus(rescanId)
+	if !ok {
+		fail(w, response.User, response.Request, "rescan ID not found", http.StatusNotFound)
+		return
+	}
+	response.Success = true
+	response.Status = status
+	succeed(w, response.Message, &response)
+}
+
 func handlePostRescan(w http.ResponseWriter, r *http.Request) {
 	var request RescanRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
@@ -102,35 +124,78 @@ func handlePostRescan(w http.ResponseWriter, r *http.Request) {
 		fail(w, "system", "rescan", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
 		return
 	}
-	requestString := fmt.Sprintf("rescan: %+v", request)
+	requestString := fmt.Sprintf("start rescan: user=%s folder=%s messageIds=%v", request.Username, request.Folder, request.MessageIds)
 
 	if Verbose {
-		log.Printf("Rescan: folder=%s messageIds=%v\n", request.Folder, request.MessageIds)
+		log.Println(requestString)
 	}
 
-	successes, fails, err := Rescan(request.Username, request.Folder, request.MessageIds)
+	rescan, err := NewRescan(request.Username, request.Folder, request.MessageIds)
 	if err != nil {
-		fail(w, request.Username, requestString, fmt.Sprintf("Rescan failed: %v", err), http.StatusInternalServerError)
+		fail(w, request.Username, requestString, fmt.Sprintf("Rescan fail: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	response := Response{
-		Success: true,
-		User:    request.Username,
-		Request: requestString,
-		Message: fmt.Sprintf("rescanned=%d failed=%d", successes, fails),
-	}
-
-	if Verbose {
-		log.Printf("response: %v\n", response)
-	}
-
-	succeed(w, response.Message, &response)
-	return
-
+	var response RescanResponse
+	response.User = "rescand"
+	response.Request = requestString
+	response.Message = "rescan started"
+	returnRescanStatus(w, rescan.Status.Id, &response)
 }
 
-func handleGetStatus(w http.ResponseWriter, r *http.Request) {
+func handleGetRescanStatus(w http.ResponseWriter, r *http.Request) {
+	rescanId := r.PathValue("rescan_id")
+	requestString := fmt.Sprintf("get rescan status: %s", rescanId)
+	if Verbose {
+		log.Println(requestString)
+	}
+	var response RescanResponse
+	response.User = "rescand"
+	response.Request = requestString
+	response.Message = "rescan status"
+	returnRescanStatus(w, rescanId, &response)
+}
+
+func handleGetAllRescanStatus(w http.ResponseWriter, r *http.Request) {
+	requestString := "get all rescan status"
+	if Verbose {
+		log.Println(requestString)
+	}
+	var response RescanStatusResponse
+	response.User = "rescand"
+	response.Request = requestString
+	response.Message = "rescan status"
+	response.Status = make(map[string]RescanStatus)
+	for id, status := range GetAllRescanStatus() {
+		response.Status[id] = status
+	}
+	succeed(w, response.Message, &response)
+}
+
+func handleDeleteRescan(w http.ResponseWriter, r *http.Request) {
+	rescanId := r.PathValue("rescan_id")
+	requestString := fmt.Sprintf("delete rescan: %s", rescanId)
+	if Verbose {
+		log.Println(requestString)
+	}
+	var response Response
+	response.User = "rescand"
+	response.Request = requestString
+	_, ok := GetRescanStatus(rescanId)
+	if !ok {
+		fail(w, response.User, response.Request, "rescan ID not found", http.StatusNotFound)
+		return
+	}
+	err := DeleteRescan(rescanId)
+	if err != nil {
+		fail(w, response.User, response.Request, fmt.Sprintf("%v", err), http.StatusInternalServerError)
+	}
+	response.Success = true
+	response.Message = "deleted"
+	succeed(w, response.Message, &response)
+}
+
+func handleGetServerStatus(w http.ResponseWriter, r *http.Request) {
 	requestString := "status request"
 
 	if Verbose {
@@ -199,7 +264,10 @@ func runServer() {
 		}
 	}
 	http.HandleFunc("POST /rescan/", handlePostRescan)
-	http.HandleFunc("GET /status/", handleGetStatus)
+	http.HandleFunc("GET /rescan/{rescan_id}/", handleGetRescanStatus)
+	http.HandleFunc("GET /rescan/", handleGetAllRescanStatus)
+	http.HandleFunc("DELETE /rescan/{rescan_id}/", handleDeleteRescan)
+	http.HandleFunc("GET /status/", handleGetServerStatus)
 
 	go func() {
 		mode := "daemon"
@@ -271,7 +339,6 @@ func main() {
 		default:
 			log.Fatalf("unknown command: '%s'\n", command)
 		}
-
 	}
 
 	if viper.GetBool("debug") {
@@ -302,9 +369,9 @@ func initConfig(configFile string) {
 	viper.SetDefault("hostname", hostname)
 	viper.SetDefault("server_cert", DEFAULT_SERVER_CERT)
 	viper.SetDefault("server_key", DEFAULT_SERVER_KEY)
-	viper.SetDefault("preserve_time", true)
 	viper.BindPFlags(pflag.CommandLine)
 	Verbose = viper.GetBool("verbose")
+	Debug = viper.GetBool("debug")
 }
 
 func showConfig() {

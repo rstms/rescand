@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/emersion/go-message/textproto"
+	"github.com/google/uuid"
 	"github.com/spf13/viper"
 	"io"
 	"io/fs"
@@ -22,6 +23,8 @@ import (
 	"syscall"
 	"time"
 )
+
+var viperDefaultsSet bool
 
 // RFC says 76; but we append a ] after breaking X-Spam-Score
 const MAX_HEADER_LENGTH = 75
@@ -60,44 +63,292 @@ type RspamdResponse struct {
 }
 
 type MessageFile struct {
-	ID       string
-	Pathname string
-	Info     fs.FileInfo
-	UID      uint32
-	GID      uint32
+	MessageId string
+	Pathname  string
+	Info      fs.FileInfo
+	UID       uint32
+	GID       uint32
 }
 
-func transformPath(base, user, folder, sub string) string {
-	var ret string
-	if folder == "/INBOX" {
-		ret = filepath.Join(base, user, "Maildir", sub)
-	} else {
-		mailDir := strings.ReplaceAll(folder, "/", ".")
-		ret = filepath.Join(base, user, "Maildir", mailDir, sub)
+type RescanStatus struct {
+	Id           string
+	Running      bool
+	Total        int
+	Completed    int
+	SuccessCount int
+	FailCount    int
+	LatestFile   string
+}
+
+type RescanResult struct {
+	index int
+	err   error
+}
+
+type Rescan struct {
+	Email        string
+	Folder       string
+	MessageIds   []string
+	MessageFiles []MessageFile
+
+	mutex  sync.Mutex
+	Status RescanStatus
+
+	filterctl *APIClient
+	doveadm   *DoveadmClient
+
+	username string
+	mailBox  string
+	mailDir  string
+	wg       sync.WaitGroup
+}
+
+var jobs sync.Mutex
+var RescanJobs map[string]*Rescan
+
+func setViperDefaults() {
+	viper.SetDefault("rescan_max_active", 8)
+	viper.SetDefault("rescan_dovecot_timeout_seconds", 5)
+	viper.SetDefault("rescan_dovecot_delay_ms", 100)
+	viper.SetDefault("rescan_backup_enabled", false)
+	viper.SetDefault("rescan_prune_seconds", 30)
+	viperDefaultsSet = true
+}
+
+func GetRescanStatus(id string) (RescanStatus, bool) {
+	var status RescanStatus
+	jobs.Lock()
+	defer jobs.Unlock()
+	rescan, found := RescanJobs[id]
+	if found {
+		rescan.mutex.Lock()
+		defer rescan.mutex.Unlock()
+		status = rescan.Status
 	}
-	if viper.GetBool("verbose") {
-		log.Printf("transformPath: base=%s user=%s folder=%s sub=%s ret=%s\n", base, user, folder, sub, ret)
+	return status, found
+}
+
+func GetAllRescanStatus() map[string]RescanStatus {
+	jobs.Lock()
+	defer jobs.Unlock()
+	ret := make(map[string]RescanStatus)
+	for id, rescan := range RescanJobs {
+		rescan.mutex.Lock()
+		ret[id] = rescan.Status
+		rescan.mutex.Unlock()
 	}
 	return ret
 }
 
-func scanMessageFiles(dir string, messageIds []string) ([]MessageFile, error) {
+func NewRescan(emailAddress, folder string, messageIds []string) (*Rescan, error) {
 
-	messageFiles := []MessageFile{}
+	if !viperDefaultsSet {
+		setViperDefaults()
+	}
+
+	rescan := Rescan{
+		Email:        emailAddress,
+		Folder:       folder,
+		MessageFiles: make([]MessageFile, 0),
+	}
+
+	rescan.Status.Id = uuid.New().String()
+	rescan.Status.Running = true
+
+	// copy MessageIds into structure
+	rescan.MessageIds = make([]string, len(messageIds))
+	for i, mid := range messageIds {
+		rescan.MessageIds[i] = mid
+	}
+
+	username, _, found := strings.Cut(emailAddress, "@")
+	if !found {
+		return nil, fmt.Errorf("failed parsing emailAddress: %s", emailAddress)
+	}
+	rescan.username = username
+
+	rescan.setMaildir()
+
+	err := rescan.scanMessageFiles(&messageIds)
+	if err != nil {
+		return nil, fmt.Errorf("failed scanning message files")
+	}
+
+	rescan.filterctl, err = NewFilterctlClient()
+	if err != nil {
+		return nil, err
+	}
+
+	rescan.doveadm, err = NewDoveadmClient()
+	if err != nil {
+		return nil, err
+	}
+
+	func() {
+		jobs.Lock()
+		defer jobs.Unlock()
+		if RescanJobs == nil {
+			if Verbose {
+				log.Println("initializing RescanJobs")
+			}
+			RescanJobs = make(map[string]*Rescan)
+		}
+		RescanJobs[rescan.Status.Id] = &rescan
+	}()
+
+	rescan.wg.Add(1)
+	rescan.Start()
+
+	return &rescan, nil
+
+}
+
+func DeleteRescan(rescanId string) error {
+	status, ok := GetRescanStatus(rescanId)
+	if ok {
+		if status.Running {
+			return fmt.Errorf("refusing delete of running rescan: %s", rescanId)
+		}
+		jobs.Lock()
+		delete(RescanJobs, rescanId)
+		jobs.Unlock()
+	}
+	return nil
+}
+
+func (r *Rescan) Start() {
+
+	maxActive := viper.GetInt("rescan_max_active")
+
+	startChan := make(chan int, maxActive)
+	resultChan := make(chan RescanResult)
+
+	// local wg is the waitgroup for each message
+	var wg sync.WaitGroup
+	wg.Add(len(r.MessageFiles))
+
+	// run rescan jobs in goprocesses and collect their results
+	go func() {
+		for openChannels := 2; openChannels > 0; {
+			select {
+			case index, ok := <-startChan:
+				if ok {
+					go func() {
+						defer wg.Done()
+						if Verbose {
+							log.Printf("RescanMessage[%d] started\n", index)
+						}
+						var result RescanResult
+						result.index = index
+						result.err = r.RescanMessage(index)
+						resultChan <- result
+					}()
+				} else {
+					openChannels--
+				}
+
+			case result, ok := <-resultChan:
+				if ok {
+					func() {
+						r.mutex.Lock()
+						defer r.mutex.Unlock()
+						r.Status.Completed++
+						r.Status.LatestFile = r.MessageFiles[result.index].Pathname
+						if result.err == nil {
+							r.Status.SuccessCount++
+							if Verbose {
+								log.Printf("Rescan[%d] Succeeded: %s\n", result.index, r.Status.LatestFile)
+							}
+						} else {
+							r.Status.FailCount++
+							log.Printf("Rescan[%d] failed: %v\n", result.index, result.err)
+						}
+					}()
+				} else {
+					openChannels--
+				}
+
+			}
+		}
+	}()
+
+	// start the jobs and wait for them to complete
+	go func() {
+
+		// r.wg is the waitgroup for the entire rescan job
+		defer r.wg.Done()
+
+		// start jobs through startChan - channel buffer size controls number of active jobs
+		for i := 0; i < len(r.MessageFiles); i++ {
+			startChan <- i
+		}
+
+		// all joobs have been started, wait for all of them to finish
+		wg.Wait()
+
+		// close channels since all jobs are complete
+		close(startChan)
+		close(resultChan)
+
+		r.mutex.Lock()
+		r.Status.Running = false
+		r.mutex.Unlock()
+
+		// setup a prune job to delete us out of RescanJobs after a while
+		go func(rescanId string) {
+			pruneSeconds := viper.GetInt64("rescan_prune_seconds")
+			<-time.After(time.Duration(pruneSeconds * int64(time.Second)))
+			log.Printf("Pruning completed rescan: %s", rescanId)
+			jobs.Lock()
+			delete(RescanJobs, rescanId)
+			jobs.Unlock()
+		}(r.Status.Id)
+
+	}()
+}
+
+func (r *Rescan) IsRunning() bool {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	return r.Status.Running
+}
+
+func (r *Rescan) WaitStatus() RescanStatus {
+	r.wg.Wait()
+	return r.Status
+}
+
+func (r *Rescan) setMaildir() {
+	if r.Folder == "/INBOX" {
+		r.mailDir = filepath.Join(MAILDIR_ROOT, r.username, "Maildir")
+		r.mailBox = "INBOX"
+	} else {
+		mailDir := strings.ReplaceAll(r.Folder, "/", ".")
+		r.mailBox = mailDir[1:]
+		r.mailDir = filepath.Join(MAILDIR_ROOT, r.username, "Maildir", mailDir)
+	}
+	if Verbose {
+		log.Printf("setMaildir: folder=%s mailbox=%s maildir=%s\n", r.Folder, r.mailBox, r.mailDir)
+	}
+}
+
+func (r *Rescan) scanMessageFiles(messageIds *[]string) error {
+
+	dir := filepath.Join(r.mailDir, "cur")
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return messageFiles, fmt.Errorf("failed reading directory: %v", err)
+		return fmt.Errorf("failed reading directory: %v", err)
 	}
-	if len(messageIds) == 0 {
+	if len(*messageIds) == 0 {
 		// no messsageId list, so just include all files
 		for _, entry := range entries {
 			if !entry.IsDir() {
 				info, err := entry.Info()
 				if err != nil {
-					return messageFiles, fmt.Errorf("failed reading directory entry: %v", err)
+					return fmt.Errorf("failed reading directory entry: %v", err)
 				}
-				messageFiles = append(messageFiles, MessageFile{
+				r.MessageFiles = append(r.MessageFiles, MessageFile{
 					Pathname: filepath.Join(dir, entry.Name()),
 					Info:     info,
 					UID:      info.Sys().(*syscall.Stat_t).Uid,
@@ -107,9 +358,9 @@ func scanMessageFiles(dir string, messageIds []string) ([]MessageFile, error) {
 		}
 	} else {
 		// messageId list specified, search directory for matching messages
-		total := len(messageIds)
+		total := len(*messageIds)
 		idMap := make(map[string]bool, total)
-		for _, mid := range messageIds {
+		for _, mid := range *messageIds {
 			idMap[mid] = true
 		}
 		for _, entry := range entries {
@@ -117,15 +368,14 @@ func scanMessageFiles(dir string, messageIds []string) ([]MessageFile, error) {
 				pathname := filepath.Join(dir, entry.Name())
 				mid, err := getMessageId(pathname)
 				if err != nil {
-					return messageFiles, err
+					return err
 				}
 				if idMap[mid] {
 					info, err := entry.Info()
 					if err != nil {
-						return messageFiles, fmt.Errorf("failed reading directory entry: %v", err)
+						return fmt.Errorf("failed reading directory entry: %v", err)
 					}
-					messageFiles = append(messageFiles, MessageFile{
-						ID:       mid,
+					r.MessageFiles = append(r.MessageFiles, MessageFile{
 						Pathname: pathname,
 						Info:     info,
 						UID:      info.Sys().(*syscall.Stat_t).Uid,
@@ -133,18 +383,19 @@ func scanMessageFiles(dir string, messageIds []string) ([]MessageFile, error) {
 					})
 				}
 			}
-			if len(messageFiles) == total {
+			if len(r.MessageFiles) == total {
 				break
 			}
 		}
 	}
-	if viper.GetBool("verbose") {
-		log.Printf("scanMessageFiles: dir=%s count=%d \n", dir, len(messageFiles))
-		for i, messageFile := range messageFiles {
+	r.Status.Total = len(r.MessageFiles)
+	if Verbose {
+		log.Printf("scanMessageFiles: dir=%s count=%d \n", dir, len(r.MessageFiles))
+		for i, messageFile := range r.MessageFiles {
 			log.Printf("  [%d] %+v\n", i, messageFile)
 		}
 	}
-	return messageFiles, nil
+	return nil
 }
 
 func getMessageId(pathname string) (string, error) {
@@ -165,92 +416,22 @@ func getMessageId(pathname string) (string, error) {
 	if len(mid) == 0 {
 		return "", fmt.Errorf("failed parsing Message-Id header")
 	}
-	if viper.GetBool("verbose") {
+	if Verbose {
 		log.Printf("getMessageId returning: %s\n", mid)
 	}
 	return mid, nil
 }
 
-func Rescan(emailAddress, folder string, messageIds []string) (int, int, error) {
-	var successCount int
-	var failCount int
+func (r *Rescan) RescanMessage(index int) error {
 
-	if viper.GetBool("verbose") {
-		log.Printf("Rescan: folder=%s\n", folder)
-		for i, mid := range messageIds {
-			log.Printf("   [%d] %s\n", i, mid)
-		}
+	inputPathname := r.MessageFiles[index].Pathname
+	if Verbose {
+		log.Printf("RescanMessage: %d %s\n", index, inputPathname)
 	}
-
-	username, _, found := strings.Cut(emailAddress, "@")
-	if !found {
-		return 0, 0, fmt.Errorf("failed parsing emailAddress: %s", emailAddress)
-	}
-
-	path := transformPath(MAILDIR_ROOT, username, folder, "cur")
-
-	messageFiles, err := scanMessageFiles(path, messageIds)
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed scanning message files")
-	}
-
-	url := viper.GetString("filterctld_url")
-	client, err := NewAPIClient(url, nil)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	var wg sync.WaitGroup
-	errorChan := make(chan error)
-	successChan := make(chan string)
-
-	for _, messageFile := range messageFiles {
-		wg.Add(1)
-		go func(client *APIClient, username, emailAddress, folder string, messageFile MessageFile) {
-			defer wg.Done()
-			err := RescanMessage(client, username, emailAddress, folder, messageFile)
-			if err != nil {
-				errorChan <- err
-			}
-			successChan <- messageFile.Pathname
-		}(client, username, emailAddress, folder, messageFile)
-	}
-
-	go func() {
-		wg.Wait()
-		close(successChan)
-		close(errorChan)
-	}()
-
-	openChannels := 2
-	for openChannels > 0 {
-		select {
-		case err, ok := <-errorChan:
-			if ok {
-				failCount++
-				fmt.Fprintf(os.Stderr, "Rescan failed: %v", err)
-			} else {
-				openChannels--
-			}
-		case msgFile, ok := <-successChan:
-			if ok {
-				successCount++
-				log.Printf("Rescanned: %s\n", msgFile)
-			} else {
-				openChannels--
-			}
-		}
-	}
-	log.Printf("Rescan complete: success=%d, fail=%d\n", successCount, failCount)
-	return successCount, failCount, nil
-}
-
-func RescanMessage(client *APIClient, username, emailAddress, folder string, messageFile MessageFile) error {
-
-	content, err := os.ReadFile(messageFile.Pathname)
+	content, err := os.ReadFile(inputPathname)
 	lines := strings.Split(string(content), "\n")
 
-	if viper.GetBool("verbose") {
+	if Debug {
 		log.Println("---BEGIN SRC HEADERS---")
 		for _, line := range lines {
 			log.Println(line)
@@ -266,6 +447,8 @@ func RescanMessage(client *APIClient, username, emailAddress, folder string, mes
 	if err != nil {
 		return err
 	}
+
+	r.MessageFiles[index].MessageId = headers.Get("Message-Id")
 
 	fromAddr, err := parseHeaderAddr(&headers, "From")
 	if err != nil {
@@ -286,17 +469,17 @@ func RescanMessage(client *APIClient, username, emailAddress, folder string, mes
 	}
 
 	var response RspamdResponse
-	err = requestRescan(client, fromAddr, rcptToAddr, deliveredToAddr, senderIP, &content, &response)
+	err = r.requestRescan(fromAddr, rcptToAddr, deliveredToAddr, senderIP, &content, &response)
 	if err != nil {
 		return err
 	}
 
-	err = mungeHeaders(client, &headers, emailAddress, fromAddr, senderIP, &response, &keys)
+	err = r.mungeHeaders(&headers, fromAddr, senderIP, &response, &keys)
 	if err != nil {
 		return err
 	}
 
-	if viper.GetBool("verbose") {
+	if Debug {
 		log.Println("---BEGIN CHANGED HEADERS---")
 		fields := headers.Fields()
 		for fields.Next() {
@@ -319,17 +502,13 @@ func RescanMessage(client *APIClient, username, emailAddress, folder string, mes
 		log.Println("---END CHANGED HEADERS---")
 	}
 
-	outputPath, err := generateOutputPath(username, folder, "tmp", &messageFile)
-	if err != nil {
-		return err
-	}
-	backupPath, err := generateOutputPath(username, folder, "backup", &messageFile)
+	outputPathname, err := r.generateOutputPathname("tmp", index)
 	if err != nil {
 		return err
 	}
 
 	err = func() error {
-		outfile, err := os.Create(outputPath)
+		outfile, err := os.Create(outputPathname)
 		if err != nil {
 			return fmt.Errorf("failed opening output file: %v", err)
 		}
@@ -368,14 +547,14 @@ func RescanMessage(client *APIClient, username, emailAddress, folder string, mes
 		return err
 	}
 
-	err = replaceFile(messageFile, outputPath, backupPath)
+	err = r.replaceFile(index, outputPathname)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func requestRescan(client *APIClient, fromAddr, rcptToAddr, deliveredToAddr, senderIP string, content *[]byte, response *RspamdResponse) error {
+func (r *Rescan) requestRescan(fromAddr, rcptToAddr, deliveredToAddr, senderIP string, content *[]byte, response *RspamdResponse) error {
 
 	requestHeaders := map[string]string{
 		"settings": `{"symbols_disabled": ["DATE_IN_PAST"]}`,
@@ -389,12 +568,12 @@ func requestRescan(client *APIClient, fromAddr, rcptToAddr, deliveredToAddr, sen
 		requestHeaders["Deliver-To"] = deliveredToAddr
 	}
 
-	_, err := client.Post("/rspamc/checkv2", content, response, &requestHeaders)
+	_, err := r.filterctl.Post("/rspamc/checkv2", content, response, &requestHeaders)
 	if err != nil {
 		return err
 	}
 
-	if viper.GetBool("verbose") {
+	if Debug {
 
 		//log.Printf("---BEGIN RESPONSE---\n%s\n---END RESPONSE---\n\n", text)
 		//log.Printf("%+v\n", response)
@@ -410,7 +589,7 @@ func requestRescan(client *APIClient, fromAddr, rcptToAddr, deliveredToAddr, sen
 	return nil
 }
 
-func mungeHeaders(client *APIClient, headers *textproto.Header, emailAddress, fromAddr, senderIP string, response *RspamdResponse, keys *[]string) error {
+func (r *Rescan) mungeHeaders(headers *textproto.Header, fromAddr, senderIP string, response *RspamdResponse, keys *[]string) error {
 
 	// delete headers RSPAM wants to delete
 	for key, _ := range response.Milter.RemoveHeaders {
@@ -437,7 +616,7 @@ func mungeHeaders(client *APIClient, headers *textproto.Header, emailAddress, fr
 	// copy the headers RSPAMD wants to add
 	for key, value := range response.Milter.AddHeaders {
 		if !skipAddKeys[key] {
-			if viper.GetBool("verbose") {
+			if Debug {
 				log.Printf("Adding: '%s': '%s'\n", key, value.Value)
 			}
 			if strings.ContainsRune(value.Value, '\n') {
@@ -488,7 +667,7 @@ func mungeHeaders(client *APIClient, headers *textproto.Header, emailAddress, fr
 	}
 	headers.Set("X-SenderScore", fmt.Sprintf("%d", senderScore))
 
-	books, err := client.ScanAddressBooks(emailAddress, fromAddr)
+	books, err := r.filterctl.ScanAddressBooks(r.Email, fromAddr)
 	if err != nil {
 		return err
 	}
@@ -496,7 +675,7 @@ func mungeHeaders(client *APIClient, headers *textproto.Header, emailAddress, fr
 		headers.Add("X-Address-Book", book)
 	}
 
-	class, err := client.ScanSpamClass(emailAddress, response.Score)
+	class, err := r.filterctl.ScanSpamClass(r.Email, response.Score)
 	if err != nil {
 		return err
 	}
@@ -550,7 +729,7 @@ func getSenderIP(header *textproto.Header) (string, error) {
 		return "", fmt.Errorf("Failed parsing IP address from: '%s'", received[1])
 	}
 	addr := match[1]
-	if viper.GetBool("verbose") {
+	if Debug {
 		log.Printf("getSenderIP returning: %s\n", addr)
 	}
 	return addr, nil
@@ -568,31 +747,33 @@ func getSenderScore(addr string) (int, error) {
 		ip4 := ip.To4()
 		score = int(ip4[3])
 	}
-	if viper.GetBool("verbose") {
+	if Debug {
 		log.Printf("senderScore for %s is %d\n", addr, score)
 	}
 	return score, nil
 }
 
-func generateOutputPath(username, folder, sub string, messageFile *MessageFile) (string, error) {
+func (r *Rescan) generateOutputPathname(sub string, index int) (string, error) {
 
-	outDir := transformPath(MAILDIR_ROOT, username, folder, sub)
+	outDir := filepath.Join(r.mailDir, sub)
 
-	err := os.MkdirAll(outDir, 0700)
+	_, err := os.Stat(outDir)
 	if err != nil {
-		return "", fmt.Errorf("failed creating output directory: %v", err)
+		err := os.MkdirAll(outDir, 0700)
+		if err != nil {
+			return "", fmt.Errorf("failed creating output directory: %v", err)
+		}
+		err = r.chownPath(outDir)
+		if err != nil {
+			return "", err
+		}
 	}
 
-	err = chownPath(username, MAILDIR_ROOT, outDir)
-	if err != nil {
-		return "", err
-	}
-
-	fileName := path.Base(messageFile.Pathname)
+	fileName := path.Base(r.MessageFiles[index].Pathname)
 	var outputPath string
-	if sub == "backup" {
+	if sub == "tmp/backup" {
 		// we're generating the backup pathname, so ensure no clobber
-		outputPath = generateBackupFilename(filepath.Join(outDir, fileName))
+		outputPath = generateNewBackupFilename(filepath.Join(outDir, fileName))
 	} else {
 		// we're generating the rescan output pathname, so strip the filename metadata
 		match := FILENAME_PATTERN.FindStringSubmatch(fileName)
@@ -604,9 +785,9 @@ func generateOutputPath(username, folder, sub string, messageFile *MessageFile) 
 	return outputPath, nil
 }
 
-func chownPath(username, base, maildirPath string) error {
+func (r *Rescan) chownPath(path string) error {
 
-	userInfo, err := user.Lookup(username)
+	userInfo, err := user.Lookup(r.username)
 	if err != nil {
 		return fmt.Errorf("failed user lookup: %v", err)
 	}
@@ -618,27 +799,14 @@ func chownPath(username, base, maildirPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed gid conversion: %v", err)
 	}
-
-	err = filepath.Walk(filepath.Join(TEMP_MAILDIR_ROOT, username), func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			err = os.Chown(path, uid, gid)
-			if err != nil {
-				return fmt.Errorf("failed maildir chown: %v", err)
-			}
-		}
-		return nil
-	})
+	err = os.Chown(path, uid, gid)
 	if err != nil {
-		return fmt.Errorf("maildir chown walk failed: %v", err)
+		return fmt.Errorf("failed maildir chown: %v", err)
 	}
-
 	return nil
 }
 
-// copy src to dst preserving time and ownership
+// copy file to dst from src dst preserving mode, ownership, and modification time
 func copyFile(dst, src string) error {
 	srcInfo, err := os.Stat(src)
 	if err != nil {
@@ -649,6 +817,7 @@ func copyFile(dst, src string) error {
 		return fmt.Errorf("copyFile: src Open failed: %v", err)
 	}
 	defer srcFile.Close()
+
 	dstFile, err := os.Create(dst)
 	if err != nil {
 		return fmt.Errorf("copyFile: dst Create failed: %v", err)
@@ -658,67 +827,135 @@ func copyFile(dst, src string) error {
 		return fmt.Errorf("copyFile: Copy failed: %v", err)
 	}
 	dstFile.Close()
+
+	// replicate access mode bits
+	err = os.Chmod(dst, srcInfo.Mode())
+	if err != nil {
+		return fmt.Errorf("copyFile: Chmod failed: %v", err)
+	}
+
+	// replicate modification time
 	err = os.Chtimes(dst, time.Now(), srcInfo.ModTime())
 	if err != nil {
 		return fmt.Errorf("copyFile: Chtimes failed: %v", err)
 	}
+
+	// replicate ownership
 	uid := srcInfo.Sys().(*syscall.Stat_t).Uid
 	gid := srcInfo.Sys().(*syscall.Stat_t).Gid
 	err = os.Chown(dst, int(uid), int(gid))
 	if err != nil {
 		return fmt.Errorf("copyFile: Chown failed: %v", err)
 	}
+
 	return nil
 }
 
-// replace original with modified, preserving original as backup
-func replaceFile(messageFile MessageFile, outputPath, backupPath string) error {
+// use dovecot API to replace original with modified, preserving original as backup
+func (r *Rescan) replaceFile(index int, outputPathname string) error {
 
-	fmt.Printf("REPLACE_FILE\ninput=%s\noutput=%s\nbackup=%s\n", messageFile.Pathname, outputPath, backupPath)
+	messageId := r.MessageFiles[index].MessageId
+	originalPathname := r.MessageFiles[index].Pathname
+	newPathname, err := r.generateOutputPathname("new", index)
 
-	// copy original file to backup
-	err := copyFile(backupPath, messageFile.Pathname)
+	var backupPathname string
+	if viper.GetBool("rescan_backup_enabled") {
+		backupPathname, err = r.generateOutputPathname("tmp/backup", index)
+		if err != nil {
+			return err
+		}
+	}
+
+	if Verbose {
+		log.Printf("BEGIN replaceFile [%d] %s %s\n", index, r.mailBox, messageId)
+		log.Printf("original: %s\n", originalPathname)
+		log.Printf("output: %s\n", outputPathname)
+		log.Printf("backup: %s\n", backupPathname)
+		log.Printf("new: %s\n", newPathname)
+	}
+
+	// backup the original message file if backup is configured
+	if backupPathname != "" {
+		if Verbose {
+			log.Printf("backup: copying '%s' -> '%s'\n", originalPathname, backupPathname)
+		}
+		err = copyFile(backupPathname, originalPathname)
+		if err != nil {
+			return err
+		}
+
+	}
+
+	// set the message \Deleted flag with dovecot
+	err = r.doveadm.MessageDelete(r.username, r.mailBox, messageId)
 	if err != nil {
 		return err
 	}
 
-	// use doveadm to import the message from outputPath
+	// wait for dovecot to report the messageID is no longer present in MAILDIR
+	err = r.awaitMessagePresent(messageId, false)
+	if err != nil {
+		return err
+	}
 
-	fmt.Printf("WARNING: replaceFile is incomplete")
+	// create a hard link to the rescan output file in MAILDIR/new; dovecot will processes it
+	err = os.Link(outputPathname, newPathname)
+	if err != nil {
+		return fmt.Errorf("failed linking '%s' -> '%s': %v", outputPathname, newPathname, err)
+	}
 
-	return nil
+	// wait for dovecot to report the messageID is present in MAILDIR
+	err = r.awaitMessagePresent(messageId, true)
+	if err != nil {
+		return err
+	}
 
-	// remove original file with dovecot
-	// import the modified file with dovecot
+	// remove the rescan output file from MAILDIR/tmp
+	err = os.Remove(outputPathname)
+	if err != nil {
+		return fmt.Errorf("failed removing '%s': %v", outputPathname, err)
+	}
 
-	/*
-		err := os.Link(messageFile.Pathname, backupFilename)
-		if err != nil {
-			return fmt.Errorf("failed linking '%s' -> '%s' : %v", messageFile.Pathname, backupFilename, err)
-		}
-		if viper.GetBool("preserve_time") {
-			err = os.Chtimes(modified, time.Now(), messageFile.Info.ModTime())
-			if err != nil {
-				return fmt.Errorf("failed changing modtime of '%s' : %v", modified, err)
-			}
-		}
-		err = os.Chmod(modified, messageFile.Info.Mode())
-		if err != nil {
-			return fmt.Errorf("failed changing mode bits of '%s' : %v", modified, err)
-		}
-		err = os.Chown(modified, int(messageFile.UID), int(messageFile.GID))
-		if err != nil {
-			return fmt.Errorf("failed changing ownership of '%s' : %v", modified, err)
-		}
-		err = os.Rename(modified, messageFile.Pathname)
-		if err != nil {
-			return fmt.Errorf("failed moving '%s' -> '%s' : %v", modified, messageFile.Pathname, err)
-		}
-	*/
+	if Verbose {
+		log.Printf("END replaceFile [%d] %s %s", index, r.mailBox, messageId)
+	}
+
+	// report success
 	return nil
 }
 
-func generateBackupFilename(modified string) string {
+// wait for dovecot to delete or create a message
+func (r *Rescan) awaitMessagePresent(messageId string, targetState bool) error {
+
+	timeoutSeconds := viper.GetInt64("rescan_dovecot_timeout_seconds")
+
+	if timeoutSeconds == 0 {
+		return nil
+	}
+
+	delayTicks := viper.GetInt64("rescan_dovecot_delay_ms")
+
+	timeout := time.After(time.Duration(timeoutSeconds * int64(time.Second)))
+	ticker := time.NewTicker(time.Duration(delayTicks * int64(time.Millisecond)))
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			present, err := r.doveadm.IsMessagePresent(r.username, r.mailBox, messageId)
+			if err != nil {
+				return fmt.Errorf("doveadm isMessagePresent failed: %v", err)
+			}
+			if present == targetState {
+				return nil
+			}
+		case <-timeout:
+			return fmt.Errorf("Timeout awaiting message presence change: %s %s %s", r.username, r.mailBox, messageId)
+		}
+	}
+	return fmt.Errorf("logic error")
+}
+
+func generateNewBackupFilename(modified string) string {
 	version := 0
 	for {
 		backup := fmt.Sprintf("%s.%d", modified, version)

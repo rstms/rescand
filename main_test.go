@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 const allowMaildirDelete = "ALLOW_TESTS_TO_DELETE_HOME_MAILDIR"
@@ -76,9 +78,26 @@ func TestMaildirInit(t *testing.T) {
 	InitializeTestMaildir(t)
 }
 
+func parseRescanResponse(t *testing.T, body io.Reader, response interface{}) {
+	decoder := json.NewDecoder(body)
+	err := decoder.Decode(response)
+	if err == nil {
+		return
+	}
+	require.Equal(t, io.EOF, err)
+}
+
+func dumpStatus(t *testing.T, status RescanStatus) {
+	data, err := json.MarshalIndent(&status, "", "  ")
+	require.Nil(t, err)
+	log.Println(string(data))
+}
+
 func TestRescanOne(t *testing.T) {
 	InitializeTests(t)
 	InitializeTestMaildir(t)
+	viper.Set("rescan_dovecot_timeout_seconds", 0)
+	viper.Set("rescan_prune_seconds", 5)
 	request := RescanRequest{}
 	request.Username = viper.GetString("test.email")
 	request.Folder = viper.GetString("test.path")
@@ -90,12 +109,38 @@ func TestRescanOne(t *testing.T) {
 	handlePostRescan(w, req)
 	result := w.Result()
 	require.Equal(t, result.StatusCode, http.StatusOK)
-	log.Printf("%+v", result)
+	var response RescanResponse
+	parseRescanResponse(t, result.Body, &response)
+	rescanId := response.Status.Id
+	log.Printf("id: %s\n", rescanId)
+	dumpStatus(t, response.Status)
+	monitorRescan(t, rescanId)
+}
+
+func monitorRescan(t *testing.T, rescanId string) {
+	ticker := time.NewTicker(1 * time.Second)
+	timeout := time.After(30 * time.Second)
+	for {
+		select {
+		case <-timeout:
+			require.True(t, false, "timeout awaiting rescan result")
+		case <-ticker.C:
+			result := GetAllRescanStatus()
+			if len(result) == 0 {
+				return
+			}
+			for _, status := range result {
+				dumpStatus(t, status)
+			}
+		}
+	}
 }
 
 func TestRescanFolder(t *testing.T) {
 	InitializeTests(t)
 	InitializeTestMaildir(t)
+	viper.Set("rescan_dovecot_timeout_seconds", 0)
+	viper.Set("rescan_prune_seconds", 10)
 	request := RescanRequest{}
 	request.Username = viper.GetString("test.email")
 	request.Folder = viper.GetString("test.path")
@@ -106,5 +151,10 @@ func TestRescanFolder(t *testing.T) {
 	handlePostRescan(w, req)
 	result := w.Result()
 	require.Equal(t, result.StatusCode, http.StatusOK)
-	log.Printf("%+v", result)
+	var response RescanResponse
+	parseRescanResponse(t, result.Body, &response)
+	rescanId := response.Status.Id
+	log.Printf("id: %s\n", rescanId)
+	dumpStatus(t, response.Status)
+	monitorRescan(t, rescanId)
 }

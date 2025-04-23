@@ -109,3 +109,28 @@ func TestDoveadmSetUnseen(t *testing.T) {
 	err = doveadm.MessageSetFlag(user, mailbox, messageId, "\\Seen", false)
 	require.Nil(t, err)
 }
+
+func TestDoveadmDeleteMessage(t *testing.T) {
+	InitializeTests(t)
+	doveadm, err := NewDoveadmClient()
+	user := viper.GetString("test.email")
+	mailbox := viper.GetString("test.dovecot_mailbox")
+	messageId := viper.GetString("test.message_id")
+	err = doveadm.MessageDelete(user, mailbox, messageId)
+	require.Nil(t, err)
+}
+
+func TestDoveadmIsMessagePresent(t *testing.T) {
+	InitializeTests(t)
+	doveadm, err := NewDoveadmClient()
+	user := viper.GetString("test.email")
+	mailbox := viper.GetString("test.dovecot_mailbox")
+	messageId := viper.GetString("test.message_id")
+	present, err := doveadm.IsMessagePresent(user, mailbox, messageId)
+	require.Nil(t, err)
+	require.True(t, present)
+
+	notPresent, err := doveadm.IsMessagePresent(user, mailbox, "notavalidmessageid")
+	require.Nil(t, err)
+	require.False(t, notPresent)
+}

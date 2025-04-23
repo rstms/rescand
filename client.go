@@ -43,6 +43,11 @@ func GetViperPath(key string) (string, error) {
 
 }
 
+func NewFilterctlClient() (*APIClient, error) {
+	filterctl_url := viper.GetString("filterctld_url")
+	return NewAPIClient(filterctl_url, nil)
+}
+
 func NewAPIClient(url string, headers *map[string]string) (*APIClient, error) {
 
 	certFile, err := GetViperPath("cert")

@@ -6,6 +6,8 @@ debug: true
 filterctld_url: https://bitbucket.rstms.net:4443
 doveadm_url: http://127.0.0.1:2018
 doveadm_api_key: "Authorization"
+rescan_backup_enabled: true
+rescan_dovecot_timeout_seconds: 0
 
 test:
   maildir: /home/mkrueger/Maildir
