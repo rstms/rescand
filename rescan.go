@@ -111,7 +111,7 @@ func setViperDefaults() {
 	viper.SetDefault("rescan_dovecot_timeout_seconds", 5)
 	viper.SetDefault("rescan_dovecot_delay_ms", 100)
 	viper.SetDefault("rescan_backup_enabled", false)
-	viper.SetDefault("rescan_prune_seconds", 30)
+	viper.SetDefault("rescan_prune_seconds", 300)
 	viperDefaultsSet = true
 }
 
@@ -297,11 +297,13 @@ func (r *Rescan) Start() {
 		// setup a prune job to delete us out of RescanJobs after a while
 		go func(rescanId string) {
 			pruneSeconds := viper.GetInt64("rescan_prune_seconds")
-			<-time.After(time.Duration(pruneSeconds * int64(time.Second)))
-			log.Printf("Pruning completed rescan: %s", rescanId)
-			jobs.Lock()
-			delete(RescanJobs, rescanId)
-			jobs.Unlock()
+			if pruneSeconds > 0 {
+				<-time.After(time.Duration(pruneSeconds * int64(time.Second)))
+				log.Printf("Pruning completed rescan: %s", rescanId)
+				jobs.Lock()
+				delete(RescanJobs, rescanId)
+				jobs.Unlock()
+			}
 		}(r.Status.Id)
 
 	}()
