@@ -922,6 +922,8 @@ func (r *Rescan) replaceFile(index int, outputPathname string) error {
 		log.Printf("END replaceFile [%d] %s %s", index, r.mailBox, messageId)
 	}
 
+	time.Sleep(5 * time.Second)
+
 	// report success
 	return nil
 }
