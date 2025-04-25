@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -95,7 +96,9 @@ func NewAPIClient(url string, headers *map[string]string) (*APIClient, error) {
 	}
 	api.Client = &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: tlsConfig,
+			TLSClientConfig:   tlsConfig,
+			IdleConnTimeout:   5 * time.Second,
+			DisableKeepAlives: true,
 		},
 	}
 

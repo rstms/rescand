@@ -221,7 +221,6 @@ func runServer() {
 	serverKeyFile := viper.GetString("server_key")
 	caFile := viper.GetString("ca")
 	var server http.Server
-	server.IdleTimeout = 5 * time.Second
 
 	if viper.GetBool("insecure") {
 		if !viper.GetBool("debug") {
@@ -229,7 +228,8 @@ func runServer() {
 		}
 		log.Printf("WARNING: client certificate validation disabled\n")
 		server = http.Server{
-			Addr: listen,
+			Addr:        listen,
+			IdleTimeout: 5 * time.Second,
 		}
 	} else {
 		caCert, err := os.ReadFile(caFile)
@@ -246,8 +246,9 @@ func runServer() {
 			ClientCAs:  caCertPool,
 		}
 		server = http.Server{
-			Addr:      listen,
-			TLSConfig: tlsConfig,
+			Addr:        listen,
+			TLSConfig:   tlsConfig,
+			IdleTimeout: 5 * time.Second,
 		}
 	}
 	http.HandleFunc("POST /rescan/", handlePostRescan)

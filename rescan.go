@@ -307,6 +307,8 @@ func (r *Rescan) Start() {
 
 		r.mutex.Lock()
 		r.Status.Running = false
+		r.doveadm = nil
+		r.filterctl = nil
 		r.mutex.Unlock()
 
 		// setup a prune job to delete us out of RescanJobs after a while
@@ -703,9 +705,10 @@ func (r *Rescan) mungeHeaders(headers *textproto.Header, fromAddr, senderIP stri
 
 	senderScore, err := getSenderScore(senderIP)
 	if err != nil {
-		return err
+		log.Printf("WARNING: senderscore lookup failed: %v", err)
+	} else {
+		headers.Set("X-SenderScore", fmt.Sprintf("%d", senderScore))
 	}
-	headers.Set("X-SenderScore", fmt.Sprintf("%d", senderScore))
 
 	books, err := r.filterctl.ScanAddressBooks(r.Status.Request.Username, fromAddr)
 	if err != nil {
