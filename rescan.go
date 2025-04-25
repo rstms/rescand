@@ -70,6 +70,21 @@ type MessageFile struct {
 	GID       uint32
 }
 
+type RescanRequest struct {
+	Username   string
+	Folder     string
+	MessageIds []string
+}
+
+func (r *RescanRequest) Copy() RescanRequest {
+	dup := *r
+	dup.MessageIds = make([]string, len(r.MessageIds))
+	for i, id := range r.MessageIds {
+		dup.MessageIds[i] = id
+	}
+	return dup
+}
+
 type RescanStatus struct {
 	Id           string
 	Running      bool
@@ -78,6 +93,13 @@ type RescanStatus struct {
 	SuccessCount int
 	FailCount    int
 	LatestFile   string
+	Request      RescanRequest
+}
+
+func (s *RescanStatus) Copy() RescanStatus {
+	dup := *s
+	dup.Request = s.Request.Copy()
+	return dup
 }
 
 type RescanResult struct {
@@ -86,21 +108,15 @@ type RescanResult struct {
 }
 
 type Rescan struct {
-	Email        string
-	Folder       string
-	MessageIds   []string
+	Status       RescanStatus
 	MessageFiles []MessageFile
-
-	mutex  sync.Mutex
-	Status RescanStatus
-
-	filterctl *APIClient
-	doveadm   *DoveadmClient
-
-	username string
-	mailBox  string
-	mailDir  string
-	wg       sync.WaitGroup
+	mutex        sync.Mutex
+	filterctl    *APIClient
+	doveadm      *DoveadmClient
+	username     string
+	mailBox      string
+	mailDir      string
+	wg           sync.WaitGroup
 }
 
 var jobs sync.Mutex
@@ -115,61 +131,60 @@ func setViperDefaults() {
 	viperDefaultsSet = true
 }
 
-func GetRescanStatus(id string) (RescanStatus, bool) {
-	var status RescanStatus
+// copy rescan status into response map owned by caller
+func GetRescanStatus(rescanIds *[]string, response *map[string]RescanStatus) error {
 	jobs.Lock()
 	defer jobs.Unlock()
-	rescan, found := RescanJobs[id]
-	if found {
-		rescan.mutex.Lock()
-		defer rescan.mutex.Unlock()
-		status = rescan.Status
+	if rescanIds == nil {
+		// return status of all rescan jobs
+		for id, rescan := range RescanJobs {
+			rescan.mutex.Lock()
+			(*response)[id] = rescan.Status.Copy()
+			rescan.mutex.Unlock()
+		}
+	} else {
+		// return status of specified rescan jobs
+		for _, id := range *rescanIds {
+			rescan, ok := RescanJobs[id]
+			if ok {
+				rescan.mutex.Lock()
+				(*response)[id] = rescan.Status.Copy()
+				rescan.mutex.Unlock()
+			} else {
+				(*response)[id] = RescanStatus{}
+			}
+		}
 	}
-	return status, found
+	return nil
 }
 
-func GetAllRescanStatus() map[string]RescanStatus {
-	jobs.Lock()
-	defer jobs.Unlock()
-	ret := make(map[string]RescanStatus)
-	for id, rescan := range RescanJobs {
-		rescan.mutex.Lock()
-		ret[id] = rescan.Status
-		rescan.mutex.Unlock()
-	}
-	return ret
-}
-
-func NewRescan(emailAddress, folder string, messageIds []string) (*Rescan, error) {
+func NewRescan(request *RescanRequest) (*Rescan, error) {
 
 	if !viperDefaultsSet {
 		setViperDefaults()
 	}
 
 	rescan := Rescan{
-		Email:        emailAddress,
-		Folder:       folder,
+		Status: RescanStatus{
+			Id:      uuid.New().String(),
+			Running: true,
+		},
 		MessageFiles: make([]MessageFile, 0),
 	}
+	rescan.Status.Request = request.Copy()
 
-	rescan.Status.Id = uuid.New().String()
-	rescan.Status.Running = true
-
-	// copy MessageIds into structure
-	rescan.MessageIds = make([]string, len(messageIds))
-	for i, mid := range messageIds {
-		rescan.MessageIds[i] = mid
-	}
-
-	username, _, found := strings.Cut(emailAddress, "@")
+	username, _, found := strings.Cut(request.Username, "@")
 	if !found {
-		return nil, fmt.Errorf("failed parsing emailAddress: %s", emailAddress)
+		return nil, fmt.Errorf("failed parsing emailAddress: %s", request.Username)
 	}
 	rescan.username = username
 
-	rescan.setMaildir()
+	err := rescan.setMaildir()
+	if err != nil {
+		return nil, err
+	}
 
-	err := rescan.scanMessageFiles(&messageIds)
+	err = rescan.scanMessageFiles()
 	if err != nil {
 		return nil, fmt.Errorf("failed scanning message files")
 	}
@@ -203,17 +218,17 @@ func NewRescan(emailAddress, folder string, messageIds []string) (*Rescan, error
 
 }
 
-func DeleteRescan(rescanId string) error {
-	status, ok := GetRescanStatus(rescanId)
-	if ok {
-		if status.Running {
-			return fmt.Errorf("refusing delete of running rescan: %s", rescanId)
+func DeleteRescan(rescanId string) (bool, error) {
+	jobs.Lock()
+	defer jobs.Unlock()
+	rescan, found := RescanJobs[rescanId]
+	if found {
+		if rescan.Status.Running {
+			return false, fmt.Errorf("refusing delete of running rescan: %s", rescanId)
 		}
-		jobs.Lock()
 		delete(RescanJobs, rescanId)
-		jobs.Unlock()
 	}
-	return nil
+	return found, nil
 }
 
 func (r *Rescan) Start() {
@@ -320,21 +335,32 @@ func (r *Rescan) WaitStatus() RescanStatus {
 	return r.Status
 }
 
-func (r *Rescan) setMaildir() {
-	if r.Folder == "/INBOX" {
+func (r *Rescan) setMaildir() error {
+	if r.Status.Request.Folder == "/INBOX" {
 		r.mailDir = filepath.Join(MAILDIR_ROOT, r.username, "Maildir")
 		r.mailBox = "INBOX"
 	} else {
-		mailDir := strings.ReplaceAll(r.Folder, "/", ".")
+		mailDir := strings.ReplaceAll(r.Status.Request.Folder, "/", ".")
+		if len(mailDir) < 2 {
+			return fmt.Errorf("maildir too short: %s", mailDir)
+		}
 		r.mailBox = mailDir[1:]
 		r.mailDir = filepath.Join(MAILDIR_ROOT, r.username, "Maildir", mailDir)
 	}
-	if Verbose {
-		log.Printf("setMaildir: folder=%s mailbox=%s maildir=%s\n", r.Folder, r.mailBox, r.mailDir)
+	stat, err := os.Stat(r.mailDir)
+	if err != nil {
+		return fmt.Errorf("Maildir stat failed: %v", err)
 	}
+	if !stat.IsDir() {
+		return fmt.Errorf("Maildir is not a directory: %s", r.mailDir)
+	}
+	if Verbose {
+		log.Printf("setMaildir: folder=%s mailbox=%s maildir=%s\n", r.Status.Request.Folder, r.mailBox, r.mailDir)
+	}
+	return nil
 }
 
-func (r *Rescan) scanMessageFiles(messageIds *[]string) error {
+func (r *Rescan) scanMessageFiles() error {
 
 	dir := filepath.Join(r.mailDir, "cur")
 
@@ -342,7 +368,7 @@ func (r *Rescan) scanMessageFiles(messageIds *[]string) error {
 	if err != nil {
 		return fmt.Errorf("failed reading directory: %v", err)
 	}
-	if len(*messageIds) == 0 {
+	if len(r.Status.Request.MessageIds) == 0 {
 		// no messsageId list, so just include all files
 		for _, entry := range entries {
 			if !entry.IsDir() {
@@ -350,19 +376,25 @@ func (r *Rescan) scanMessageFiles(messageIds *[]string) error {
 				if err != nil {
 					return fmt.Errorf("failed reading directory entry: %v", err)
 				}
+				pathname := filepath.Join(dir, entry.Name())
+				mid, err := getMessageId(pathname)
+				if err != nil {
+					return err
+				}
 				r.MessageFiles = append(r.MessageFiles, MessageFile{
-					Pathname: filepath.Join(dir, entry.Name()),
-					Info:     info,
-					UID:      info.Sys().(*syscall.Stat_t).Uid,
-					GID:      info.Sys().(*syscall.Stat_t).Gid,
+					MessageId: mid,
+					Pathname:  pathname,
+					Info:      info,
+					UID:       info.Sys().(*syscall.Stat_t).Uid,
+					GID:       info.Sys().(*syscall.Stat_t).Gid,
 				})
 			}
 		}
 	} else {
 		// messageId list specified, search directory for matching messages
-		total := len(*messageIds)
+		total := len(r.Status.Request.MessageIds)
 		idMap := make(map[string]bool, total)
-		for _, mid := range *messageIds {
+		for _, mid := range r.Status.Request.MessageIds {
 			idMap[mid] = true
 		}
 		for _, entry := range entries {
@@ -378,10 +410,11 @@ func (r *Rescan) scanMessageFiles(messageIds *[]string) error {
 						return fmt.Errorf("failed reading directory entry: %v", err)
 					}
 					r.MessageFiles = append(r.MessageFiles, MessageFile{
-						Pathname: pathname,
-						Info:     info,
-						UID:      info.Sys().(*syscall.Stat_t).Uid,
-						GID:      info.Sys().(*syscall.Stat_t).Gid,
+						MessageId: mid,
+						Pathname:  pathname,
+						Info:      info,
+						UID:       info.Sys().(*syscall.Stat_t).Uid,
+						GID:       info.Sys().(*syscall.Stat_t).Gid,
 					})
 				}
 			}
@@ -450,7 +483,12 @@ func (r *Rescan) RescanMessage(index int) error {
 		return err
 	}
 
-	r.MessageFiles[index].MessageId = headers.Get("Message-Id")
+	mid := headers.Get("Message-Id")
+	mid = strings.TrimLeft(mid, "<")
+	mid = strings.TrimRight(mid, ">")
+	if mid != r.MessageFiles[index].MessageId {
+		return fmt.Errorf("MessageId mismatch [%d] expected '%s' but got '%s'; %+v", index, r.MessageFiles[index].MessageId, mid, r.MessageFiles[index])
+	}
 
 	fromAddr, err := parseHeaderAddr(&headers, "From")
 	if err != nil {
@@ -669,7 +707,7 @@ func (r *Rescan) mungeHeaders(headers *textproto.Header, fromAddr, senderIP stri
 	}
 	headers.Set("X-SenderScore", fmt.Sprintf("%d", senderScore))
 
-	books, err := r.filterctl.ScanAddressBooks(r.Email, fromAddr)
+	books, err := r.filterctl.ScanAddressBooks(r.Status.Request.Username, fromAddr)
 	if err != nil {
 		return err
 	}
@@ -677,7 +715,7 @@ func (r *Rescan) mungeHeaders(headers *textproto.Header, fromAddr, senderIP stri
 		headers.Add("X-Address-Book", book)
 	}
 
-	class, err := r.filterctl.ScanSpamClass(r.Email, response.Score)
+	class, err := r.filterctl.ScanSpamClass(r.Status.Request.Username, response.Score)
 	if err != nil {
 		return err
 	}

@@ -87,8 +87,8 @@ func parseRescanResponse(t *testing.T, body io.Reader, response interface{}) {
 	require.Equal(t, io.EOF, err)
 }
 
-func dumpStatus(t *testing.T, status RescanStatus) {
-	data, err := json.MarshalIndent(&status, "", "  ")
+func dumpStatus(t *testing.T, status *map[string]RescanStatus) {
+	data, err := json.MarshalIndent(status, "", "  ")
 	require.Nil(t, err)
 	log.Println(string(data))
 }
@@ -98,10 +98,12 @@ func TestRescanOne(t *testing.T) {
 	InitializeTestMaildir(t)
 	viper.Set("rescan_dovecot_timeout_seconds", 0)
 	viper.Set("rescan_prune_seconds", 5)
-	request := RescanRequest{}
-	request.Username = viper.GetString("test.email")
-	request.Folder = viper.GetString("test.path")
-	request.MessageIds = append(request.MessageIds, viper.GetString("test.message_id"))
+	messageId := viper.GetString("test.message_id")
+	request := RescanRequest{
+		Username:   viper.GetString("test.email"),
+		Folder:     viper.GetString("test.path"),
+		MessageIds: []string{messageId},
+	}
 	data, err := json.Marshal(&request)
 	require.Nil(t, err)
 	req := httptest.NewRequest("POST", "/rescan/", bytes.NewBuffer(data))
@@ -111,13 +113,19 @@ func TestRescanOne(t *testing.T) {
 	require.Equal(t, result.StatusCode, http.StatusOK)
 	var response RescanResponse
 	parseRescanResponse(t, result.Body, &response)
-	rescanId := response.Status.Id
-	log.Printf("id: %s\n", rescanId)
-	dumpStatus(t, response.Status)
+	dumpStatus(t, &response.Status)
+	require.Equal(t, 1, len(response.Status))
+	var rescanId string
+	for id, _ := range response.Status {
+		rescanId = id
+	}
+	require.NotEmpty(t, rescanId)
 	monitorRescan(t, rescanId)
 }
 
 func monitorRescan(t *testing.T, rescanId string) {
+	rescanIds := []string{rescanId}
+	result := RescanResponse{Status: make(map[string]RescanStatus)}
 	ticker := time.NewTicker(1 * time.Second)
 	timeout := time.After(30 * time.Second)
 	for {
@@ -125,12 +133,11 @@ func monitorRescan(t *testing.T, rescanId string) {
 		case <-timeout:
 			require.True(t, false, "timeout awaiting rescan result")
 		case <-ticker.C:
-			result := GetAllRescanStatus()
-			if len(result) == 0 {
+			err := GetRescanStatus(&rescanIds, &result.Status)
+			require.Nil(t, err)
+			dumpStatus(t, &result.Status)
+			if !result.Status[rescanId].Running {
 				return
-			}
-			for _, status := range result {
-				dumpStatus(t, status)
 			}
 		}
 	}
@@ -141,9 +148,11 @@ func TestRescanFolder(t *testing.T) {
 	InitializeTestMaildir(t)
 	viper.Set("rescan_dovecot_timeout_seconds", 0)
 	viper.Set("rescan_prune_seconds", 10)
-	request := RescanRequest{}
-	request.Username = viper.GetString("test.email")
-	request.Folder = viper.GetString("test.path")
+	request := RescanRequest{
+		Username:   viper.GetString("test.email"),
+		Folder:     viper.GetString("test.path"),
+		MessageIds: []string{},
+	}
 	data, err := json.Marshal(&request)
 	require.Nil(t, err)
 	req := httptest.NewRequest("POST", "/rescan/", bytes.NewBuffer(data))
@@ -153,8 +162,12 @@ func TestRescanFolder(t *testing.T) {
 	require.Equal(t, result.StatusCode, http.StatusOK)
 	var response RescanResponse
 	parseRescanResponse(t, result.Body, &response)
-	rescanId := response.Status.Id
-	log.Printf("id: %s\n", rescanId)
-	dumpStatus(t, response.Status)
+	dumpStatus(t, &response.Status)
+	require.Equal(t, 1, len(response.Status))
+	var rescanId string
+	for id, _ := range response.Status {
+		rescanId = id
+	}
+	require.NotEmpty(t, rescanId)
 	monitorRescan(t, rescanId)
 }

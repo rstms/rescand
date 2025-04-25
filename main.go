@@ -63,18 +63,7 @@ type ScanResponse struct {
 	Books []string
 }
 
-type RescanRequest struct {
-	Username   string
-	Folder     string
-	MessageIds []string
-}
-
 type RescanResponse struct {
-	Response
-	Status RescanStatus
-}
-
-type RescanStatusResponse struct {
 	Response
 	Status map[string]RescanStatus
 }
@@ -106,18 +95,21 @@ func succeed(w http.ResponseWriter, message string, result interface{}) {
 	json.NewEncoder(w).Encode(result)
 }
 
-func returnRescanStatus(w http.ResponseWriter, rescanId string, response *RescanResponse) {
-	status, ok := GetRescanStatus(rescanId)
-	if !ok {
-		fail(w, response.User, response.Request, "rescan ID not found", http.StatusNotFound)
+func returnRescanStatus(w http.ResponseWriter, message string, rescanIds *[]string, response *RescanResponse) {
+	response.User = "rescand"
+	response.Message = message
+	response.Success = true
+	response.Status = make(map[string]RescanStatus)
+	err := GetRescanStatus(rescanIds, &response.Status)
+	if err != nil {
+		fail(w, response.User, response.Request, "failed getting rescan status", http.StatusNotFound)
 		return
 	}
-	response.Success = true
-	response.Status = status
 	succeed(w, response.Message, &response)
 }
 
 func handlePostRescan(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
 	var request RescanRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
@@ -130,49 +122,43 @@ func handlePostRescan(w http.ResponseWriter, r *http.Request) {
 		log.Println(requestString)
 	}
 
-	rescan, err := NewRescan(request.Username, request.Folder, request.MessageIds)
+	rescan, err := NewRescan(&request)
 	if err != nil {
 		fail(w, request.Username, requestString, fmt.Sprintf("Rescan fail: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	var response RescanResponse
-	response.User = "rescand"
 	response.Request = requestString
-	response.Message = "rescan started"
-	returnRescanStatus(w, rescan.Status.Id, &response)
+	rescanIds := []string{rescan.Status.Id}
+	returnRescanStatus(w, "rescan started", &rescanIds, &response)
 }
 
 func handleGetRescanStatus(w http.ResponseWriter, r *http.Request) {
-	rescanId := r.PathValue("rescan_id")
-	requestString := fmt.Sprintf("get rescan status: %s", rescanId)
+	defer r.Body.Close()
+	rescanIds := []string{r.PathValue("rescan_id")}
+	requestString := fmt.Sprintf("get rescan status: %s", rescanIds[0])
 	if Verbose {
 		log.Println(requestString)
 	}
 	var response RescanResponse
-	response.User = "rescand"
 	response.Request = requestString
-	response.Message = "rescan status"
-	returnRescanStatus(w, rescanId, &response)
+	returnRescanStatus(w, "rescan status", &rescanIds, &response)
 }
 
 func handleGetAllRescanStatus(w http.ResponseWriter, r *http.Request) {
-	requestString := "get all rescan status"
+	defer r.Body.Close()
+	requestString := "get rescan status: all"
 	if Verbose {
 		log.Println(requestString)
 	}
-	var response RescanStatusResponse
-	response.User = "rescand"
+	var response RescanResponse
 	response.Request = requestString
-	response.Message = "rescan status"
-	response.Status = make(map[string]RescanStatus)
-	for id, status := range GetAllRescanStatus() {
-		response.Status[id] = status
-	}
-	succeed(w, response.Message, &response)
+	returnRescanStatus(w, "rescan status", nil, &response)
 }
 
 func handleDeleteRescan(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
 	rescanId := r.PathValue("rescan_id")
 	requestString := fmt.Sprintf("delete rescan: %s", rescanId)
 	if Verbose {
@@ -181,21 +167,21 @@ func handleDeleteRescan(w http.ResponseWriter, r *http.Request) {
 	var response Response
 	response.User = "rescand"
 	response.Request = requestString
-	_, ok := GetRescanStatus(rescanId)
-	if !ok {
-		fail(w, response.User, response.Request, "rescan ID not found", http.StatusNotFound)
-		return
-	}
-	err := DeleteRescan(rescanId)
+	response.Success = false
+	found, err := DeleteRescan(rescanId)
 	if err != nil {
-		fail(w, response.User, response.Request, fmt.Sprintf("%v", err), http.StatusInternalServerError)
+		response.Message = err.Error()
+	} else if found {
+		response.Success = true
+		response.Message = "deleted"
+	} else {
+		response.Message = "not found"
 	}
-	response.Success = true
-	response.Message = "deleted"
 	succeed(w, response.Message, &response)
 }
 
 func handleGetServerStatus(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
 	requestString := "status request"
 
 	if Verbose {
@@ -235,6 +221,7 @@ func runServer() {
 	serverKeyFile := viper.GetString("server_key")
 	caFile := viper.GetString("ca")
 	var server http.Server
+	server.IdleTimeout = 5 * time.Second
 
 	if viper.GetBool("insecure") {
 		if !viper.GetBool("debug") {

@@ -15,10 +15,12 @@ import (
 func TestServerRescanMessage(t *testing.T) {
 	InitializeTests(t)
 	InitializeTestMaildir(t)
-	email := viper.GetString("test.email")
-	path := viper.GetString("test.path")
-	messageId := viper.GetString("test.message_id")
-	rescan, err := NewRescan(email, path, []string{messageId})
+	request := RescanRequest{
+		Username:   viper.GetString("test.email"),
+		Folder:     viper.GetString("test.path"),
+		MessageIds: []string{viper.GetString("test.message_id")},
+	}
+	rescan, err := NewRescan(&request)
 	require.Nil(t, err)
 	running := rescan.IsRunning()
 	require.True(t, running)
