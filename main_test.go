@@ -127,7 +127,7 @@ func monitorRescan(t *testing.T, rescanId string) {
 	rescanIds := []string{rescanId}
 	result := RescanResponse{Status: make(map[string]RescanStatus)}
 	ticker := time.NewTicker(1 * time.Second)
-	timeout := time.After(30 * time.Second)
+	timeout := time.After(300 * time.Second)
 	for {
 		select {
 		case <-timeout:
@@ -147,7 +147,8 @@ func TestRescanFolder(t *testing.T) {
 	InitializeTests(t)
 	InitializeTestMaildir(t)
 	viper.Set("rescan_dovecot_timeout_seconds", 0)
-	viper.Set("rescan_prune_seconds", 10)
+	viper.Set("rescan_prune_seconds", 120)
+	viper.Set("verbose", false)
 	request := RescanRequest{
 		Username:   viper.GetString("test.email"),
 		Folder:     viper.GetString("test.path"),

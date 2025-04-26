@@ -8,6 +8,8 @@ doveadm_url: http://127.0.0.1:2018
 doveadm_api_key: "Authorization"
 rescan_backup_enabled: true
 rescan_dovecot_timeout_seconds: 0
+rescan_sleep_seconds: 3
+rescan_max_active: 1
 
 test:
   maildir: /home/mkrueger/Maildir

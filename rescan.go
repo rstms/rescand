@@ -128,6 +128,7 @@ func setViperDefaults() {
 	viper.SetDefault("rescan_dovecot_delay_ms", 100)
 	viper.SetDefault("rescan_backup_enabled", false)
 	viper.SetDefault("rescan_prune_seconds", 300)
+	viper.SetDefault("rescan_sleep_seconds", 0)
 	viperDefaultsSet = true
 }
 
@@ -235,7 +236,8 @@ func (r *Rescan) Start() {
 
 	maxActive := viper.GetInt("rescan_max_active")
 
-	startChan := make(chan int, maxActive)
+	limitChan := make(chan struct{}, maxActive)
+	startChan := make(chan int)
 	resultChan := make(chan RescanResult)
 
 	// local wg is the waitgroup for each message
@@ -257,6 +259,7 @@ func (r *Rescan) Start() {
 						result.index = index
 						result.err = r.RescanMessage(index)
 						resultChan <- result
+						<-limitChan
 					}()
 				} else {
 					openChannels--
@@ -293,8 +296,9 @@ func (r *Rescan) Start() {
 		// r.wg is the waitgroup for the entire rescan job
 		defer r.wg.Done()
 
-		// start jobs through startChan - channel buffer size controls number of active jobs
+		// start jobs through startChan - limitChan controls number of active jobs
 		for i := 0; i < len(r.MessageFiles); i++ {
+			limitChan <- struct{}{}
 			startChan <- i
 		}
 
@@ -963,7 +967,10 @@ func (r *Rescan) replaceFile(index int, outputPathname string) error {
 		log.Printf("END replaceFile [%d] %s %s", index, r.mailBox, messageId)
 	}
 
-	time.Sleep(5 * time.Second)
+	delay := viper.GetInt64("rescan_sleep_seconds")
+	if delay != 0 {
+		time.Sleep(time.Duration(delay * int64(time.Second)))
+	}
 
 	// report success
 	return nil
