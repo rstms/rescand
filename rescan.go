@@ -187,7 +187,7 @@ func NewRescan(request *RescanRequest) (*Rescan, error) {
 
 	err = rescan.scanMessageFiles()
 	if err != nil {
-		return nil, fmt.Errorf("failed scanning message files")
+		return nil, err
 	}
 
 	rescan.filterctl, err = NewFilterctlClient()
