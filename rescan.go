@@ -455,7 +455,7 @@ func getMessageId(pathname string) (string, error) {
 	mid = strings.TrimRight(mid, ">")
 	mid = strings.TrimSpace(mid)
 	if len(mid) == 0 {
-		return "", fmt.Errorf("failed parsing Message-Id header")
+		return "", fmt.Errorf("failed parsing Message-Id header: %v", pathname)
 	}
 	if Verbose {
 		log.Printf("getMessageId returning: %s\n", mid)
