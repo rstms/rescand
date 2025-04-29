@@ -10,7 +10,9 @@ import (
 )
 
 type DoveadmClient struct {
-	api *APIClient
+	api     *APIClient
+	verbose bool
+	debug   bool
 }
 
 /*
@@ -43,7 +45,13 @@ func NewDoveadmClient() (*DoveadmClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := DoveadmClient{api: api}
+	client := DoveadmClient{
+		api:     api,
+		verbose: viper.GetBool("doveadm_verbose"),
+		debug:   viper.GetBool("doveadm_debug"),
+	}
+	api.verbose = client.verbose
+	api.debug = client.debug
 	return &client, nil
 }
 
@@ -87,7 +95,6 @@ func (c *DoveadmClient) parseResponse(requestTag string, responseList *[]interfa
 	}
 
 	label := response[0]
-	fmt.Printf("response label=%s\n", label)
 	switch label {
 	case "doveadmResponse":
 		break
@@ -108,13 +115,16 @@ func (c *DoveadmClient) sendCommand(command string, args *map[string]interface{}
 	if err != nil {
 		return nil, err
 	}
+	if c.verbose {
+		log.Printf("doveadm request: %v\n", string(request))
+	}
 	var response []interface{}
-	text, err := c.api.Post("/doveadm/v1", &request, &response, nil)
+	_, err = c.api.Post("/doveadm/v1", &request, &response, nil)
 	if err != nil {
 		return nil, fmt.Errorf("doveadm Post failed: %v", err)
 	}
-	if viper.GetBool("verbose") {
-		log.Printf("doveadm response: %s\n", text)
+	if c.verbose {
+		log.Printf("doveadm response: %v\n", response)
 	}
 	responses, err := c.parseResponse(tag, &response)
 	if err != nil {

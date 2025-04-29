@@ -2,14 +2,18 @@ cert: ~/ssl/filterctl.pem
 key: ~/ssl/filterctl.key
 ca: /etc/ssl/keymaster.pem
 verbose: true
-debug: true
+debug: false
 filterctld_url: https://bitbucket.rstms.net:4443
+
+backup_enabled: true
+sleep_seconds: 2
+max_active: 1
+dovecot_timeout_seconds: 2
+
 doveadm_url: http://127.0.0.1:2018
 doveadm_api_key: "Authorization"
-rescan_backup_enabled: true
-rescan_dovecot_timeout_seconds: 0
-rescan_sleep_seconds: 3
-rescan_max_active: 1
+doveadm_verbose: false
+doveadm_debug: false
 
 test:
   maildir: /home/mkrueger/Maildir

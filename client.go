@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -26,6 +25,8 @@ type APIClient struct {
 	Client  *http.Client
 	URL     string
 	Headers map[string]string
+	debug   bool
+	verbose bool
 }
 
 func GetViperPath(key string) (string, error) {
@@ -67,6 +68,8 @@ func NewAPIClient(url string, headers *map[string]string) (*APIClient, error) {
 	api := APIClient{
 		URL:     url,
 		Headers: make(map[string]string),
+		debug:   viper.GetBool("debug"),
+		verbose: viper.GetBool("verbose"),
 	}
 
 	if headers != nil {
@@ -122,49 +125,40 @@ func (a *APIClient) Delete(path string, response interface{}) (string, error) {
 }
 
 func (a *APIClient) request(method, path string, requestData, responseData interface{}, headers *map[string]string) (string, error) {
-	if viper.GetBool("verbose") {
-		log.Printf("<-- %s %s", method, a.URL+path)
-	}
-	var requestBuffer io.Reader
+	var requestBytes []byte
+	var err error
 	switch requestData.(type) {
 	case nil:
-		break
 	case *[]byte:
-		if viper.GetBool("verbose") {
-			log.Println("requestData: *[]byte")
-		}
-		requestBuffer = bytes.NewBuffer(*(requestData.(*[]byte)))
-		break
+		requestBytes = *(requestData.(*[]byte))
 	default:
-		if viper.GetBool("verbose") {
-			log.Println("requestData: JSON")
-		}
-		requestBytes, err := json.Marshal(requestData)
+		requestBytes, err = json.Marshal(requestData)
 		if err != nil {
 			return "", fmt.Errorf("failed marshalling JSON body for %s request: %v", method, err)
 		}
-		if viper.GetBool("verbose") {
-			log.Printf("request: %s\n", string(requestBytes))
-		}
-		requestBuffer = bytes.NewBuffer(requestBytes)
-		break
 	}
-	request, err := http.NewRequest(method, a.URL+path, requestBuffer)
+
+	if a.verbose {
+		log.Printf("<-- %s %s (%d bytes)", method, a.URL+path, len(requestBytes))
+		if a.debug && headers != nil {
+			log.Println("BEGIN-REQUEST-HEADERS")
+			for key, value := range *headers {
+				log.Printf("%s: %s\n", key, value)
+			}
+			log.Println("END-REQUEST-HEADERS")
+		}
+		if a.debug {
+			log.Printf("BEGIN-REQUEST-BODY\n%s\nEND-REQUEST-BODY\n", string(requestBytes))
+		}
+	}
+
+	request, err := http.NewRequest(method, a.URL+path, bytes.NewBuffer(requestBytes))
 	if err != nil {
 		return "", fmt.Errorf("failed creating %s request: %v", method, err)
 	}
 
 	for key, value := range a.Headers {
 		request.Header.Add(key, value)
-	}
-
-	if headers != nil {
-		for key, value := range *headers {
-			request.Header.Add(key, value)
-			if viper.GetBool("verbose") {
-				log.Printf("request header: %s: %s\n", key, value)
-			}
-		}
 	}
 
 	response, err := a.Client.Do(request)
@@ -179,8 +173,11 @@ func (a *APIClient) request(method, path string, requestData, responseData inter
 	if response.StatusCode < 200 && response.StatusCode > 299 {
 		return "", fmt.Errorf("API returned status [%d] %s", response.StatusCode, response.Status)
 	}
-	if viper.GetBool("verbose") {
-		log.Printf("--> %v\n", string(body))
+	if a.verbose {
+		log.Printf("--> (%d bytes)\n", len(body))
+	}
+	if a.debug {
+		log.Printf("BEGIN-RESPONSE-BODY\n%s\nEND-RESPONSE-BODY\n", string(body))
 	}
 	err = json.Unmarshal(body, responseData)
 	if err != nil {
@@ -190,7 +187,7 @@ func (a *APIClient) request(method, path string, requestData, responseData inter
 		return "", err
 	}
 	var text []byte
-	if viper.GetBool("verbose") {
+	if a.verbose {
 		text, err = json.MarshalIndent(responseData, "", "  ")
 		if err != nil {
 			return "", fmt.Errorf("failed formatting JSON response: %v", err)
@@ -202,7 +199,7 @@ func (a *APIClient) request(method, path string, requestData, responseData inter
 func (a *APIClient) ScanAddressBooks(username, address string) ([]string, error) {
 	var response ScanResponse
 
-	if viper.GetBool("debug") {
+	if a.debug {
 		log.Printf("ScanAddressBooks: %s %s\n", username, address)
 	}
 
@@ -225,7 +222,7 @@ func (a *APIClient) ScanAddressBooks(username, address string) ([]string, error)
 		return []string{}, fmt.Errorf("filterctl books request failed: %v\n", response.Message)
 	}
 
-	if viper.GetBool("debug") {
+	if a.debug {
 		log.Printf("ScanAddressBooks returning: %v\n", response.Books)
 	}
 	return response.Books, nil
@@ -233,7 +230,7 @@ func (a *APIClient) ScanAddressBooks(username, address string) ([]string, error)
 
 func (a *APIClient) ScanSpamClass(username string, score float32) (string, error) {
 
-	if viper.GetBool("debug") {
+	if a.debug {
 		log.Printf("ScanSpamClass: %s %f\n", username, score)
 	}
 
@@ -251,7 +248,7 @@ func (a *APIClient) ScanSpamClass(username string, score float32) (string, error
 	if !response.Success {
 		return "", fmt.Errorf("filterctl class request failed: %v\n", response.Message)
 	}
-	if viper.GetBool("debug") {
+	if a.debug {
 		log.Printf("ScanSpamClass returning: %s\n", response.Class)
 	}
 	return response.Class, nil

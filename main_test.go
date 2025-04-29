@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"io"
@@ -23,9 +24,11 @@ func InitializeTests(t *testing.T) {
 	viper.SetEnvPrefix("rescand")
 	viper.AutomaticEnv()
 	viper.ReadInConfig()
+	Verbose = viper.GetBool("verbose")
 }
 
 func InitializeTestMaildir(t *testing.T) {
+	InitializeTests(t)
 
 	// require environment var to continue
 	allowed := os.Getenv(allowMaildirDelete)
@@ -74,7 +77,6 @@ func InitializeTestMaildir(t *testing.T) {
 }
 
 func TestMaildirInit(t *testing.T) {
-	InitializeTests(t)
 	InitializeTestMaildir(t)
 }
 
@@ -87,17 +89,20 @@ func parseRescanResponse(t *testing.T, body io.Reader, response interface{}) {
 	require.Equal(t, io.EOF, err)
 }
 
-func dumpStatus(t *testing.T, status *map[string]RescanStatus) {
-	data, err := json.MarshalIndent(status, "", "  ")
-	require.Nil(t, err)
-	log.Println(string(data))
+func dumpStatus(t *testing.T, statusMap *map[string]RescanStatus) {
+	for id, status := range *statusMap {
+		if status.Running {
+			fmt.Printf("Status: %s Running [%d of %d]\n", id, status.Completed, status.Total)
+		} else {
+			data, err := json.MarshalIndent(status, "", "  ")
+			require.Nil(t, err)
+			fmt.Println(string(data))
+		}
+	}
 }
 
 func TestRescanOne(t *testing.T) {
-	InitializeTests(t)
 	InitializeTestMaildir(t)
-	viper.Set("rescan_dovecot_timeout_seconds", 0)
-	viper.Set("rescan_prune_seconds", 5)
 	messageId := viper.GetString("test.message_id")
 	request := RescanRequest{
 		Username:   viper.GetString("test.email"),
@@ -144,11 +149,8 @@ func monitorRescan(t *testing.T, rescanId string) {
 }
 
 func TestRescanFolder(t *testing.T) {
-	InitializeTests(t)
 	InitializeTestMaildir(t)
-	viper.Set("rescan_dovecot_timeout_seconds", 0)
-	viper.Set("rescan_prune_seconds", 120)
-	viper.Set("verbose", false)
+	viper.Set("rescan.prune_seconds", 120)
 	request := RescanRequest{
 		Username:   viper.GetString("test.email"),
 		Folder:     viper.GetString("test.path"),
