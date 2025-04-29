@@ -68,6 +68,10 @@ type MessageFile struct {
 	Info      fs.FileInfo
 	UID       uint32
 	GID       uint32
+	To        string
+	From      string
+	Subject   string
+	Date      string
 }
 
 type RescanRequest struct {
@@ -77,9 +81,9 @@ type RescanRequest struct {
 }
 
 type RescanError struct {
-	MessageId string
-	Pathname  string
-	Message   string
+	Message  string
+	Pathname string
+	Headers  map[string]string
 }
 
 func (r *RescanRequest) Copy() RescanRequest {
@@ -303,9 +307,15 @@ func (r *Rescan) Start() {
 						} else {
 							r.Status.FailCount++
 							rescanError := RescanError{
-								MessageId: r.MessageFiles[result.index].MessageId,
-								Pathname:  r.MessageFiles[result.index].Pathname,
-								Message:   fmt.Sprintf("%v", result.err),
+								Message:  fmt.Sprintf("%v", result.err),
+								Pathname: r.MessageFiles[result.index].Pathname,
+								Headers: map[string]string{
+									"Date":      r.MessageFiles[result.index].Date,
+									"To":        r.MessageFiles[result.index].To,
+									"From":      r.MessageFiles[result.index].From,
+									"Subject":   r.MessageFiles[result.index].Subject,
+									"Mesage-Id": r.MessageFiles[result.index].MessageId,
+								},
 							}
 							r.Status.Errors = append(r.Status.Errors, rescanError)
 							log.Printf("Rescan[%d] failed: %+v\n", result.index, rescanError)
@@ -529,10 +539,16 @@ func (r *Rescan) rescanMessage(index int) error {
 		return fmt.Errorf("MessageId mismatch; expected '%s' but got '%s' %+v", r.MessageFiles[index].MessageId, mid, r.MessageFiles[index])
 	}
 
+	r.MessageFiles[index].From = headers.Get("From")
+	r.MessageFiles[index].To = headers.Get("To")
+	r.MessageFiles[index].Subject = headers.Get("Subject")
+	r.MessageFiles[index].Date = headers.Get("Date")
+
 	fromAddr, err := r.parseHeaderAddr(index, &headers, "From")
 	if err != nil {
 		return fmt.Errorf("parseHeaderAddr: %v", err)
 	}
+
 	rcptToAddr, err := r.parseHeaderAddr(index, &headers, "To")
 	if err != nil {
 		return fmt.Errorf("parseHeaderAddr: %v", err)
