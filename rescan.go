@@ -423,6 +423,9 @@ func (r *Rescan) scanMessageFiles() error {
 					return fmt.Errorf("failed reading directory entry: %v", err)
 				}
 				pathname := filepath.Join(dir, entry.Name())
+				if hasTrashFlag(pathname) {
+					continue
+				}
 				mid, err := r.getMessageId(pathname)
 				if err != nil {
 					return err
@@ -477,6 +480,16 @@ func (r *Rescan) scanMessageFiles() error {
 		}
 	}
 	return nil
+}
+
+func hasTrashFlag(pathname string) bool {
+	_, flags, found := strings.Cut(pathname, ":2,")
+	if found {
+		if strings.ContainsRune(flags, 'T') {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Rescan) getMessageId(pathname string) (string, error) {
