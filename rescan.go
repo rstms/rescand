@@ -808,13 +808,14 @@ func (r *Rescan) mungeHeaders(index int, headers *textproto.Header, fromAddr, se
 	if err != nil {
 		return fmt.Errorf("filterctl ScanAddressBooks request failed: %v", err)
 	}
-	for _, book := range books {
-		bookAsEmail := fmt.Sprintf("%s <%s@addresss.book.filter>", book, book)
-		headers.Add("X-Address-Book", bookAsEmail)
-		if r.verbose {
-			log.Printf("mungeHeaders[%d] adding: X-Address-Book: %s\n", index, bookAsEmail)
-		}
+	addressBookValue := strings.Join(books, ",")
+	//for _, book := range books {
+	//bookAsEmail := fmt.Sprintf("%s <%s@addresss.book.filter>", book, book)
+	headers.Add("X-Address-Book", addressBookValue)
+	if r.verbose {
+		log.Printf("mungeHeaders[%d] adding: X-Address-Book: %s\n", index, addressBookValue)
 	}
+	//}
 
 	class, err := r.filterctl.ScanSpamClass(r.Status.Request.Username, response.Score)
 	if err != nil {
