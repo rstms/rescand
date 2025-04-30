@@ -553,7 +553,11 @@ func (r *Rescan) rescanMessage(index int) error {
 	}
 
 	r.MessageFiles[index].From = headers.Get("From")
+
 	r.MessageFiles[index].To = headers.Get("To")
+	if r.MessageFiles[index].To == "" {
+		r.MessageFiles[index].To = headers.Get("Delivered-To")
+	}
 	r.MessageFiles[index].Subject = headers.Get("Subject")
 	r.MessageFiles[index].Date = headers.Get("Date")
 
@@ -799,9 +803,10 @@ func (r *Rescan) mungeHeaders(index int, headers *textproto.Header, fromAddr, se
 		return fmt.Errorf("filterctl ScanAddressBooks request failed: %v", err)
 	}
 	for _, book := range books {
-		headers.Add("X-Address-Book", book)
+		bookAsEmail := fmt.Sprintf("%s <%s@addresss.book.filter>", book, book)
+		headers.Add("X-Address-Book", bookAsEmail)
 		if r.verbose {
-			log.Printf("mungeHeaders[%d] adding: X-Address-Book: %s\n", index, book)
+			log.Printf("mungeHeaders[%d] adding: X-Address-Book: %s\n", index, bookAsEmail)
 		}
 	}
 
