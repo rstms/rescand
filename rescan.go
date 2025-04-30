@@ -888,6 +888,9 @@ func (r *Rescan) getSenderIP(index int, header *textproto.Header) (string, error
 
 func (r *Rescan) getSenderScore(index int, addr string) (int, error) {
 	octets := strings.Split(addr, ".")
+	if len(octets) != 4 {
+		return 0, fmt.Errorf("Invalid sender IP: %v", addr)
+	}
 	lookup := fmt.Sprintf("%s.%s.%s.%s.score.senderscore.com", octets[3], octets[2], octets[1], octets[0])
 	ips, err := net.LookupIP(lookup)
 	if err != nil {
