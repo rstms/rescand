@@ -22,4 +22,5 @@ test:
   maildir_path: ".test"
   dovecot_mailbox: "test"
   file: cur/1745204839.M337913P37678.mailbox.rstms.net,S=13531,W=13785:2,Sb
-  message_id: 01000193f0bcbbc2-4427d1e6-c9aa-4ee2-8852-9d2c529aca41-000000@email.amazonses.com
+    #message_id: 01000193f0bcbbc2-4427d1e6-c9aa-4ee2-8852-9d2c529aca41-000000@email.amazonses.com
+  message_id: 174632876925.31481.12243349829304726519@phobos.rstms.net

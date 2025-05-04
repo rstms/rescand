@@ -552,12 +552,6 @@ func (r *Rescan) rescanMessage(index int) error {
 		return fmt.Errorf("MessageId mismatch; expected '%s' but got '%s' %+v", r.MessageFiles[index].MessageId, mid, r.MessageFiles[index])
 	}
 
-	r.MessageFiles[index].From = headers.Get("From")
-
-	r.MessageFiles[index].To = headers.Get("To")
-	if r.MessageFiles[index].To == "" {
-		r.MessageFiles[index].To = headers.Get("Delivered-To")
-	}
 	r.MessageFiles[index].Subject = headers.Get("Subject")
 	r.MessageFiles[index].Date = headers.Get("Date")
 
@@ -565,14 +559,20 @@ func (r *Rescan) rescanMessage(index int) error {
 	if err != nil {
 		return fmt.Errorf("parseHeaderAddr: %v", err)
 	}
+	r.MessageFiles[index].From = fromAddr
 
 	rcptToAddr, err := r.parseHeaderAddr(index, &headers, "To")
 	if err != nil {
 		return fmt.Errorf("parseHeaderAddr: %v", err)
 	}
-	deliveredToAddr, err := r.parseHeaderAddr(index, &headers, "Delivered-To")
+
+	deliveredToAddr, err := r.parseDeliveredToAddr(index, &headers)
 	if err != nil {
-		return fmt.Errorf("parseHeaderAddr: %v", err)
+		return fmt.Errorf("parseDeliveredToAddAddr: %v", err)
+	}
+
+	if r.MessageFiles[index].To == "" {
+		r.MessageFiles[index].To = deliveredToAddr
 	}
 
 	senderIP, err := r.getSenderIP(index, &headers)
@@ -686,7 +686,7 @@ func (r *Rescan) requestRescan(index int, fromAddr, rcptToAddr, deliveredToAddr,
 	}
 
 	if deliveredToAddr != "" {
-		requestHeaders["Deliver-To"] = deliveredToAddr
+		requestHeaders["Delivered-To"] = deliveredToAddr
 	}
 
 	_, err := r.filterctl.Post("/rspamc/checkv2", content, response, &requestHeaders)
@@ -868,6 +868,20 @@ func (r *Rescan) parseHeaderAddr(index int, header *textproto.Header, key string
 		log.Printf("parseHeaderAddr[%d] returning: %s\n", index, emailAddress)
 	}
 	return emailAddress, nil
+}
+
+func (r *Rescan) parseDeliveredToAddr(index int, header *textproto.Header) (string, error) {
+	key := "Delivered-To"
+	for _, value := range header.Values(key) {
+		if strings.ContainsRune(value, '@') {
+			emailAddress, err := parseEmailAddress(value)
+			if err != nil {
+				return "", err
+			}
+			return emailAddress, nil
+		}
+	}
+	return "", fmt.Errorf("no email address header value found: %s", key)
 }
 
 func (r *Rescan) getSenderIP(index int, header *textproto.Header) (string, error) {

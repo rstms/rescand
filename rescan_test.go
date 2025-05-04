@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -25,6 +26,7 @@ func TestServerRescanMessage(t *testing.T) {
 	running := rescan.IsRunning()
 	require.True(t, running)
 	status := rescan.WaitStatus()
+	fmt.Printf("status: %+v\n", status)
 	require.False(t, status.Running)
 	require.Equal(t, status.Total, 1)
 	require.Equal(t, status.SuccessCount, 1)
