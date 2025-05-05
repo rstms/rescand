@@ -862,7 +862,7 @@ func (r *Rescan) parseHeaderAddr(index int, header *textproto.Header, key string
 	}
 	emailAddress, err := parseEmailAddress(value)
 	if err != nil {
-		return "", fmt.Errorf("failed parsing email address from header: %v", err)
+		return "", fmt.Errorf("failed parsing email address from header '%s': %v", key, err)
 	}
 	if r.debug {
 		log.Printf("parseHeaderAddr[%d] returning: %s\n", index, emailAddress)
