@@ -24,7 +24,7 @@ const Version = "0.3.1"
 
 const DEFAULT_CONFIG_FILE = "/etc/rescand/config.yaml"
 
-const DEFAULT_LOG_FILE = "/var/log/rescand.log"
+const DEFAULT_LOG_FILE = "/var/log/rescand"
 const DEFAULT_ADDRESS = "127.0.0.1"
 const DEFAULT_PORT = 2017
 const DEFAULT_SERVER_CERT = "/etc/rescand/rescand.pem"
