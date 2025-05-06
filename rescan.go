@@ -449,6 +449,9 @@ func (r *Rescan) scanMessageFiles() error {
 		for _, entry := range entries {
 			if !entry.IsDir() {
 				pathname := filepath.Join(dir, entry.Name())
+				if hasTrashFlag(pathname) {
+					continue
+				}
 				mid, err := r.getMessageId(pathname)
 				if err != nil {
 					return err
@@ -482,6 +485,7 @@ func (r *Rescan) scanMessageFiles() error {
 	return nil
 }
 
+// detect message filenames with IMAP \Trash flag
 func hasTrashFlag(pathname string) bool {
 	_, flags, found := strings.Cut(pathname, ":2,")
 	if found {
@@ -714,19 +718,19 @@ func (r *Rescan) mungeHeaders(index int, headers *textproto.Header, fromAddr, se
 		headers.Del(key)
 	}
 
-	// delete headers we will be replacing
+	deleteHeaders := []string{
+		"x-address-book",
+		"x-senderscore",
+		"x-spam",
+		"x-rspam",
+		"x-sieve-filtered",
+	}
+	// delete headers if present
 	for _, key := range *keys {
-		if strings.HasPrefix(strings.ToLower(key), "x-address-book") {
-			headers.Del(key)
-		}
-		if strings.HasPrefix(strings.ToLower(key), "x-senderscore") {
-			headers.Del(key)
-		}
-		if strings.HasPrefix(strings.ToLower(key), "x-spam") {
-			headers.Del(key)
-		}
-		if strings.HasPrefix(strings.ToLower(key), "x-rspam") {
-			headers.Del(key)
+		for _, deleteHeader := range deleteHeaders {
+			if strings.HasPrefix(strings.ToLower(key), deleteHeader) {
+				headers.Del(key)
+			}
 		}
 	}
 
