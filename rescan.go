@@ -720,6 +720,7 @@ func (r *Rescan) mungeHeaders(index int, headers *textproto.Header, fromAddr, se
 
 	deleteHeaders := []string{
 		"x-address-book",
+		"x-rescanned",
 		"x-senderscore",
 		"x-spam",
 		"x-rspam",
@@ -840,6 +841,8 @@ func (r *Rescan) mungeHeaders(index int, headers *textproto.Header, fromAddr, se
 	if r.verbose {
 		log.Printf("mungeHeaders[%d] adding: X-Spam: %s\n", index, spamValue)
 	}
+
+	headers.Set("X-Rescanned", "yes")
 
 	*keys = []string{}
 	fields := headers.Fields()
