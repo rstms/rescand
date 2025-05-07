@@ -96,7 +96,7 @@ func TestDoveadmSetSeen(t *testing.T) {
 	user := viper.GetString("test.email")
 	mailbox := viper.GetString("test.dovecot_mailbox")
 	messageId := viper.GetString("test.message_id")
-	err = doveadm.MessageSetFlag(user, mailbox, messageId, "\\Seen", true)
+	err = doveadm.MessageAddFlag(user, mailbox, messageId, "\\Seen")
 	require.Nil(t, err)
 }
 
@@ -106,7 +106,7 @@ func TestDoveadmSetUnseen(t *testing.T) {
 	user := viper.GetString("test.email")
 	mailbox := viper.GetString("test.dovecot_mailbox")
 	messageId := viper.GetString("test.message_id")
-	err = doveadm.MessageSetFlag(user, mailbox, messageId, "\\Seen", false)
+	err = doveadm.MessageRemoveFlag(user, mailbox, messageId, "\\Seen")
 	require.Nil(t, err)
 }
 

@@ -152,17 +152,23 @@ func (c *DoveadmClient) MailboxList(user string) (*[]string, error) {
 	return &mailboxes, nil
 }
 
-func (c *DoveadmClient) MessageSetFlag(user, mailbox, messageId, flag string, seen bool) error {
-	command := "flagsAdd"
-	if !seen {
-		command = "flagsRemove"
-	}
+func (c *DoveadmClient) MessageAddFlag(user, mailbox, messageId, flag string) error {
 	args := map[string]interface{}{
 		"user":  user,
 		"flag":  []string{flag},
 		"query": []string{"MAILBOX", mailbox, "HEADER", "MESSAGE-ID", messageId},
 	}
-	_, err := c.sendCommand(command, &args)
+	_, err := c.sendCommand("flagsAdd", &args)
+	return err
+}
+
+func (c *DoveadmClient) MessageRemoveFlag(user, mailbox, messageId, flag string) error {
+	args := map[string]interface{}{
+		"user":  user,
+		"flag":  []string{flag},
+		"query": []string{"MAILBOX", mailbox, "HEADER", "MESSAGE-ID", messageId},
+	}
+	_, err := c.sendCommand("flagsRemove", &args)
 	return err
 }
 
@@ -185,7 +191,7 @@ func (c *DoveadmClient) MailboxExpunge(user, mailbox string) error {
 }
 
 func (c *DoveadmClient) MessageDelete(user, mailbox, messageId string) error {
-	err := c.MessageSetFlag(user, mailbox, messageId, "\\Deleted", true)
+	err := c.MessageAddFlag(user, mailbox, messageId, "\\Deleted")
 	if err != nil {
 		return err
 	}

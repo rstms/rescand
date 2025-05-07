@@ -1101,6 +1101,12 @@ func (r *Rescan) replaceFile(index int, outputPathname string) error {
 		return fmt.Errorf("dovecotWait failed awaiting new message import to cur: %v", err)
 	}
 
+	// set the Rescanned flag
+	err = r.doveadm.MessageAddFlag(r.username, r.mailBox, messageId, "Rescanned")
+	if err != nil {
+		return fmt.Errorf("MessageAddFlag 'Rescanned' failed: %v", err)
+	}
+
 	if r.sleepSeconds != 0 {
 		log.Printf("replaceFile[%d] WARNING sleeping %d seconds (rescan.sleep_seconds)\n", index, r.sleepSeconds)
 		time.Sleep(time.Duration(r.sleepSeconds * int64(time.Second)))
