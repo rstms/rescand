@@ -1102,7 +1102,7 @@ func (r *Rescan) replaceFile(index int, outputPathname string) error {
 	}
 
 	// set the Rescanned flag
-	err = r.doveadm.MessageAddFlag(r.username, r.mailBox, messageId, "Rescanned")
+	err = r.doveadm.MessageAddFlag(r.username, r.mailBox, messageId, "$Rescanned")
 	if err != nil {
 		return fmt.Errorf("MessageAddFlag 'Rescanned' failed: %v", err)
 	}
