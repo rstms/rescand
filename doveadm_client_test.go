@@ -63,8 +63,8 @@ func TestDoveadmMailboxList(t *testing.T) {
 	require.Nil(t, err)
 	list, err := doveadm.MailboxList(viper.GetString("test.email"))
 	require.Nil(t, err)
-	require.IsType(t, &[]string{}, list)
-	for _, mailbox := range *list {
+	require.IsType(t, []string{}, list)
+	for _, mailbox := range list {
 		log.Println(mailbox)
 	}
 }
@@ -131,13 +131,22 @@ func TestDoveadmIsMessagePresent(t *testing.T) {
 	require.False(t, notPresent)
 }
 
-func TestDoveadmMailboxCreate(t *testing.T) {
+func TestDoveadmMailboxCreateDelete(t *testing.T) {
 	InitializeTests(t)
 	doveadm, err := NewDoveadmClient()
 	user := viper.GetString("test.email")
 	mailbox := "howdy"
-	err = doveadm.MailboxCreate(user, mailbox, true)
+	err = doveadm.MailboxCreate(user, mailbox, false, false)
 	require.Nil(t, err)
+	present, err := doveadm.IsMailboxPresent(user, mailbox)
+	require.Nil(t, err)
+	require.True(t, present)
+	err = doveadm.MailboxDelete(user, mailbox, true)
+	require.Nil(t, err)
+	present, err = doveadm.IsMailboxPresent(user, mailbox)
+	require.Nil(t, err)
+	require.False(t, present)
+
 }
 
 func TestDoveadmMessageMove(t *testing.T) {
@@ -149,4 +158,14 @@ func TestDoveadmMessageMove(t *testing.T) {
 	messageId := viper.GetString("test.move_test_message_id")
 	err = doveadm.MessageMove(user, dst, src, messageId)
 	require.Nil(t, err)
+}
+
+func TestDoveadmMailboxEmpty(t *testing.T) {
+	InitializeTests(t)
+	doveadm, err := NewDoveadmClient()
+	user := viper.GetString("test.email")
+	mailbox := viper.GetString("test.dovecot_mailbox")
+	empty, err := doveadm.IsMailboxEmpty(user, mailbox)
+	require.Nil(t, err)
+	require.IsType(t, true, empty)
 }

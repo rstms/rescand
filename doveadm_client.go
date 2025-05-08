@@ -82,7 +82,7 @@ func (c *DoveadmClient) getCommands() (string, error) {
 func (c *DoveadmClient) parseResponse(requestTag string, responseList *[]interface{}) (*[]interface{}, error) {
 
 	if len(*responseList) != 1 {
-		return nil, fmt.Errorf("doveadm: unexpected multiple responses: %+v", *responseList)
+		return nil, fmt.Errorf("unexpected multiple doveadm responses: %+v", *responseList)
 	}
 
 	var response []interface{}
@@ -91,7 +91,7 @@ func (c *DoveadmClient) parseResponse(requestTag string, responseList *[]interfa
 
 	tag := response[2]
 	if tag != requestTag {
-		return nil, fmt.Errorf("doveadm: tag mismatch: %s %+v", requestTag, *responseList)
+		return nil, fmt.Errorf("doveadm response tag mismatch: %s %+v", requestTag, *responseList)
 	}
 
 	label := response[0]
@@ -103,7 +103,7 @@ func (c *DoveadmClient) parseResponse(requestTag string, responseList *[]interfa
 		return nil, fmt.Errorf("doveadm error: %+v", errorDetail)
 		break
 	default:
-		return nil, fmt.Errorf("doveadm: unrecognized response: %+v", *responseList)
+		return nil, fmt.Errorf("unrecognized doveadm response: %+v", *responseList)
 	}
 	var items []interface{}
 	items = response[1].([]interface{})
@@ -128,28 +128,31 @@ func (c *DoveadmClient) sendCommand(command string, args *map[string]interface{}
 	}
 	responses, err := c.parseResponse(tag, &response)
 	if err != nil {
-		return nil, fmt.Errorf("doveadm request failed: %v", err)
+		return nil, err
 	}
 	return responses, nil
 }
 
 func (c *DoveadmClient) Reload() error {
 	_, err := c.sendCommand("reload", nil)
+	if err != nil {
+		return fmt.Errorf("reload failed: %v", err)
+	}
 	return err
 }
 
-func (c *DoveadmClient) MailboxList(user string) (*[]string, error) {
+func (c *DoveadmClient) MailboxList(user string) ([]string, error) {
 	args := map[string]interface{}{"user": user}
 	results, err := c.sendCommand("mailboxList", &args)
 	if err != nil {
-		return nil, err
+		return []string{}, fmt.Errorf("mailboxList failed: (user %s): %v", user, err)
 	}
 	mailboxes := make([]string, len(*results))
 	for i, result := range *results {
 		result := result.(map[string]interface{})
 		mailboxes[i] = result["mailbox"].(string)
 	}
-	return &mailboxes, nil
+	return mailboxes, nil
 }
 
 func (c *DoveadmClient) MessageAddFlag(user, mailbox, messageId, flag string) error {
@@ -159,7 +162,10 @@ func (c *DoveadmClient) MessageAddFlag(user, mailbox, messageId, flag string) er
 		"query": []string{"MAILBOX", mailbox, "HEADER", "MESSAGE-ID", messageId},
 	}
 	_, err := c.sendCommand("flagsAdd", &args)
-	return err
+	if err != nil {
+		return fmt.Errorf("flagsAdd failed: (user %s mailbox %s messageId %s flag %s): %v", user, mailbox, messageId, flag, err)
+	}
+	return nil
 }
 
 func (c *DoveadmClient) MessageRemoveFlag(user, mailbox, messageId, flag string) error {
@@ -169,7 +175,10 @@ func (c *DoveadmClient) MessageRemoveFlag(user, mailbox, messageId, flag string)
 		"query": []string{"MAILBOX", mailbox, "HEADER", "MESSAGE-ID", messageId},
 	}
 	_, err := c.sendCommand("flagsRemove", &args)
-	return err
+	if err != nil {
+		return fmt.Errorf("flagsRemove failed: (user %s mailbox %s messageId %s flag %s): %v", user, mailbox, messageId, flag, err)
+	}
+	return nil
 }
 
 func (c *DoveadmClient) MessageExpunge(user, mailbox, messageId string) error {
@@ -178,7 +187,10 @@ func (c *DoveadmClient) MessageExpunge(user, mailbox, messageId string) error {
 		"query": []string{"MAILBOX", mailbox, "HEADER", "MESSAGE-ID", messageId},
 	}
 	_, err := c.sendCommand("expunge", &args)
-	return err
+	if err != nil {
+		return fmt.Errorf("expunge failed: (user %s mailbox %s messageId %s): %v", user, mailbox, messageId, err)
+	}
+	return nil
 }
 
 func (c *DoveadmClient) MessageMove(user, dstMailbox, srcMailbox, messageId string) error {
@@ -188,6 +200,9 @@ func (c *DoveadmClient) MessageMove(user, dstMailbox, srcMailbox, messageId stri
 		"query":              []string{"MAILBOX", srcMailbox, "HEADER", "MESSAGE-ID", messageId},
 	}
 	_, err := c.sendCommand("move", &args)
+	if err != nil {
+		return fmt.Errorf("move failed: (user %s dst %s src %s messageId %s): %v", user, dstMailbox, srcMailbox, messageId, err)
+	}
 	return err
 }
 
@@ -197,7 +212,10 @@ func (c *DoveadmClient) MailboxExpunge(user, mailbox string) error {
 		"query": []string{"MAILBOX", mailbox},
 	}
 	_, err := c.sendCommand("expunge", &args)
-	return err
+	if err != nil {
+		return fmt.Errorf("expunge failed: (user %s mailbox %s): %v", user, mailbox, err)
+	}
+	return nil
 }
 
 func (c *DoveadmClient) MessageDelete(user, mailbox, messageId string) error {
@@ -215,7 +233,7 @@ func (c *DoveadmClient) IsMessagePresent(user, mailbox, messageId string) (bool,
 	}
 	results, err := c.sendCommand("search", &args)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("search failed: (user %s mailbox %s messageId %s): %v", user, mailbox, messageId, err)
 	}
 	return len(*results) > 0, nil
 }
@@ -225,7 +243,7 @@ func (c *DoveadmClient) IsMailboxPresent(user, mailbox string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	for _, name := range *boxen {
+	for _, name := range boxen {
 		if name == mailbox {
 			return true, nil
 		}
@@ -233,12 +251,15 @@ func (c *DoveadmClient) IsMailboxPresent(user, mailbox string) (bool, error) {
 	return false, nil
 }
 
-func (c *DoveadmClient) MailboxCreate(user, mailbox string, subscribe bool) error {
+func (c *DoveadmClient) MailboxCreate(user, mailbox string, mustNotExist, subscribe bool) error {
 	present, err := c.IsMailboxPresent(user, mailbox)
 	if err != nil {
 		return err
 	}
 	if present {
+		if mustNotExist {
+			return fmt.Errorf("user %s mailbox %s exists", user, mailbox)
+		}
 		return nil
 	}
 	args := map[string]interface{}{
@@ -247,5 +268,53 @@ func (c *DoveadmClient) MailboxCreate(user, mailbox string, subscribe bool) erro
 		"subscriptions": subscribe,
 	}
 	_, err = c.sendCommand("mailboxCreate", &args)
-	return err
+	if err != nil {
+		return fmt.Errorf("mailboxCreate failed: (user %s mailbox %s): %v", user, mailbox, err)
+	}
+	return nil
+}
+
+func (c *DoveadmClient) MailboxDelete(user, mailbox string, mustExist bool) error {
+
+	exists, err := c.IsMailboxPresent(user, mailbox)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if mustExist {
+			return fmt.Errorf("user %s mailbox %s not found", user, mailbox)
+		}
+		return nil
+	}
+	empty, err := c.IsMailboxEmpty(user, mailbox)
+	if err != nil {
+		return err
+	}
+	if !empty {
+		return fmt.Errorf("user %s mailbox %s not empty", user, mailbox)
+	}
+	args := map[string]interface{}{
+		"user":          user,
+		"requireEmpty":  true,
+		"subscriptions": true,
+		"recursive":     false,
+		"mailbox":       []string{mailbox},
+	}
+	_, err = c.sendCommand("mailboxDelete", &args)
+	if err != nil {
+		return fmt.Errorf("mailboxDelete failed: (user %s mailbox %s): %v", user, mailbox, err)
+	}
+	return nil
+}
+
+func (c *DoveadmClient) IsMailboxEmpty(user, mailbox string) (bool, error) {
+	args := map[string]interface{}{
+		"user":  user,
+		"query": []string{"MAILBOX", mailbox},
+	}
+	results, err := c.sendCommand("search", &args)
+	if err != nil {
+		return false, fmt.Errorf("search failed: (user %s mailbox %s): %v", user, mailbox, err)
+	}
+	return len(*results) == 0, nil
 }

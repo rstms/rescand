@@ -13,6 +13,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"os/user"
 	"path"
 	"path/filepath"
@@ -130,6 +131,8 @@ type Rescan struct {
 	mailDir               string
 	outBox                string
 	outDir                string
+	sieveFilter           string
+	sieveScript           string
 	wg                    sync.WaitGroup
 	verbose               bool
 	debug                 bool
@@ -153,6 +156,8 @@ func setViperDefaults() {
 	viper.SetDefault("prune_seconds", 300)
 	viper.SetDefault("sleep_seconds", 0)
 	viper.SetDefault("subscribe_rescan", true)
+	viper.SetDefault("sieve_filter", "/usr/local/bin/sieve-filter")
+	viper.SetDefault("sieve_script", "/usr/local/lib/dovecot/sieve/new-mail.sieve")
 	viperDefaultsSet = true
 }
 
@@ -200,6 +205,8 @@ func NewRescan(request *RescanRequest) (*Rescan, error) {
 		debug:                 viper.GetBool("debug"),
 		backupEnabled:         viper.GetBool("backup_enabled"),
 		subscribeRescan:       viper.GetBool("subscribe_rescan"),
+		sieveFilter:           viper.GetString("sieve_filter"),
+		sieveScript:           viper.GetString("sieve_script"),
 		sleepSeconds:          viper.GetInt64("sleep_seconds"),
 		dovecotDelayMs:        viper.GetInt64("dovecot_delay_ms"),
 		dovecotTickerMs:       viper.GetInt64("dovecot_ticker_ms"),
@@ -228,6 +235,11 @@ func NewRescan(request *RescanRequest) (*Rescan, error) {
 	err = rescan.setMaildir()
 	if err != nil {
 		return nil, err
+	}
+
+	err = rescan.createRescanMailbox()
+	if err != nil {
+		return nil, fmt.Errorf("CreateRescanMailbox: %v", err)
 	}
 
 	err = rescan.scanMessageFiles()
@@ -357,6 +369,20 @@ func (r *Rescan) Start() {
 		close(startChan)
 		close(resultChan)
 
+		err := r.importMessages()
+		if err != nil {
+			r.mutex.Lock()
+			r.Status.Errors = append(r.Status.Errors, RescanError{Message: fmt.Sprintf("Failed importing messages: %v", err)})
+			r.mutex.Unlock()
+		}
+
+		err = r.deleteRescanMailbox()
+		if err != nil {
+			r.mutex.Lock()
+			r.Status.Errors = append(r.Status.Errors, RescanError{Message: fmt.Sprintf("Failed deleting rescan mailbox: %v", err)})
+			r.mutex.Unlock()
+		}
+
 		r.mutex.Lock()
 		r.Status.Running = false
 		r.doveadm = nil
@@ -414,15 +440,74 @@ func (r *Rescan) setMaildir() error {
 		return fmt.Errorf("Maildir is not a directory: %s", r.mailDir)
 	}
 
-	err = r.doveadm.MailboxCreate(r.username, r.outBox, r.subscribeRescan)
-	if err != nil {
-		return fmt.Errorf("Failed creating mailbox %s for user %s: %v", r.username, r.outBox, err)
-	}
-
 	if r.verbose {
 		log.Printf("setMaildir: folder=%s mailbox=%s maildir=%s\n", r.Status.Request.Folder, r.mailBox, r.mailDir)
 	}
 	return nil
+}
+
+func (r *Rescan) createRescanMailbox() error {
+	if r.verbose {
+		log.Printf("Creating rescan maildir %s...", r.outDir)
+	}
+	err := r.doveadm.MailboxCreate(r.username, r.outBox, false, r.subscribeRescan)
+	if err != nil {
+		return fmt.Errorf("MailboxCreate failed: %v", err)
+	}
+	return nil
+}
+
+func (r *Rescan) deleteRescanMailbox() error {
+	if r.verbose {
+		log.Printf("Deleting rescan maildir %s...", r.outDir)
+	}
+	err := r.doveadm.MailboxDelete(r.username, r.outBox, true)
+	if err != nil {
+		return fmt.Errorf("MailboxDelete failed: %v", err)
+	}
+	return nil
+}
+
+func (r *Rescan) importMessages() error {
+
+	if r.verbose {
+		log.Printf("Importing rescanned messages from %s", r.outDir)
+	}
+	// /usr/local/bin/sieve-filter -e -W -u ${user} -m ${mailbox} ${sieve_script} ${mailbox}.rescan
+	cmd := exec.Command(r.sieveFilter, "-e", "-W", "-u", r.username, "-m", r.mailBox, r.sieveScript, r.outBox)
+	cmdLine := fmt.Sprintf("%s %s", cmd.Path, strings.Join(cmd.Args, " "))
+	if r.verbose {
+		log.Printf("sieve-filter command: %s\n", cmdLine)
+	}
+	var oBuf, eBuf bytes.Buffer
+	cmd.Stdout = &oBuf
+	cmd.Stderr = &eBuf
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("Failed executing sieve-filter command: %v", err)
+	}
+	exitCode := cmd.ProcessState.ExitCode()
+
+	if exitCode != 0 {
+		log.Printf("Error: sieve filter command exited %d\n", cmd.ProcessState.ExitCode())
+		log.Printf("command: %s\n", cmdLine)
+	}
+
+	if r.verbose || exitCode != 0 {
+		logLines("stdout", oBuf.String())
+	}
+
+	if exitCode != 0 {
+		logLines("stderr", eBuf.String())
+		return fmt.Errorf("sieve-filter import exited %d: %s\n", cmd.ProcessState.ExitCode(), eBuf.String())
+	}
+	return nil
+}
+
+func logLines(label, output string) {
+	for _, line := range strings.Split(output, "\n") {
+		log.Printf("%s: %s\n", label, line)
+	}
 }
 
 func (r *Rescan) scanMessageFiles() error {
