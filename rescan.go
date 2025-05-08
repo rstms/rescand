@@ -389,6 +389,10 @@ func (r *Rescan) Start() {
 		r.filterctl = nil
 		r.mutex.Unlock()
 
+		if r.verbose {
+			log.Printf("Rescan complete: %s", r.Status.Id)
+		}
+
 		// setup a prune job to delete us out of RescanJobs after a while
 		go func(rescanId string) {
 			pruneSeconds := viper.GetInt64("prune_seconds")
