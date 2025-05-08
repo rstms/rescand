@@ -474,7 +474,12 @@ func (r *Rescan) importMessages() error {
 		log.Printf("Importing rescanned messages from %s", r.outDir)
 	}
 	// /usr/local/bin/sieve-filter -e -W -u ${user} -m ${mailbox} ${sieve_script} ${mailbox}.rescan
-	cmd := exec.Command(r.sieveFilter, "-e", "-W", "-u", r.username, "-m", r.mailBox, r.sieveScript, r.outBox)
+	args := []string{}
+	if r.verbose {
+		args = append(args, "-v")
+	}
+	args = append(args, []string{"-e", "-W", "-u", r.username, "-m", r.mailBox, r.sieveScript, r.outBox}...)
+	cmd := exec.Command(r.sieveFilter, args...)
 	cmdLine := fmt.Sprintf("%s %s", cmd.Path, strings.Join(cmd.Args, " "))
 	if r.verbose {
 		log.Printf("sieve-filter command: %s\n", cmdLine)
