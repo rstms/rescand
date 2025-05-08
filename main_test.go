@@ -60,6 +60,18 @@ func InitializeTestMaildir(t *testing.T) {
 	err = os.MkdirAll(filepath.Join(maildir, maildirPath, "tmp"), 0700)
 	require.Nil(t, err)
 
+	err = os.MkdirAll(filepath.Join(maildir, maildirPath+".rescan"), 0700)
+	require.Nil(t, err)
+
+	err = os.MkdirAll(filepath.Join(maildir, maildirPath+".rescan", "cur"), 0700)
+	require.Nil(t, err)
+
+	err = os.MkdirAll(filepath.Join(maildir, maildirPath+".rescan", "new"), 0700)
+	require.Nil(t, err)
+
+	err = os.MkdirAll(filepath.Join(maildir, maildirPath+".rescan", "tmp"), 0700)
+	require.Nil(t, err)
+
 	err = filepath.Walk(filepath.Join("testdata", "cur"), func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err

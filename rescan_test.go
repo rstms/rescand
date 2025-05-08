@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
+	"os"
 	"testing"
 )
 
@@ -31,4 +32,15 @@ func TestServerRescanMessage(t *testing.T) {
 	require.Equal(t, status.Total, 1)
 	require.Equal(t, status.SuccessCount, 1)
 	require.Equal(t, status.FailCount, 0)
+}
+
+func TestGenerateFilename(t *testing.T) {
+
+	dir, err := os.MkdirTemp("", "test")
+	require.Nil(t, err)
+	defer os.RemoveAll(dir)
+	name, err := generateImapPathname("testdata/cur/message", dir)
+	require.Nil(t, err)
+	require.NotEmpty(t, name)
+	fmt.Printf("filename: %s\n", name)
 }

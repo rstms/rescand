@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"github.com/emersion/go-message/textproto"
 	"github.com/google/uuid"
@@ -127,10 +128,13 @@ type Rescan struct {
 	username              string
 	mailBox               string
 	mailDir               string
+	outBox                string
+	outDir                string
 	wg                    sync.WaitGroup
 	verbose               bool
 	debug                 bool
 	backupEnabled         bool
+	subscribeRescan       bool
 	dovecotDelayMs        int64
 	dovecotTickerMs       int64
 	dovecotTimeoutSeconds int64
@@ -148,6 +152,7 @@ func setViperDefaults() {
 	viper.SetDefault("backup_enabled", false)
 	viper.SetDefault("prune_seconds", 300)
 	viper.SetDefault("sleep_seconds", 0)
+	viper.SetDefault("subscribe_rescan", false)
 	viperDefaultsSet = true
 }
 
@@ -194,6 +199,7 @@ func NewRescan(request *RescanRequest) (*Rescan, error) {
 		verbose:               viper.GetBool("verbose"),
 		debug:                 viper.GetBool("debug"),
 		backupEnabled:         viper.GetBool("backup_enabled"),
+		subscribeRescan:       viper.GetBool("subscribe_rescan"),
 		sleepSeconds:          viper.GetInt64("sleep_seconds"),
 		dovecotDelayMs:        viper.GetInt64("dovecot_delay_ms"),
 		dovecotTickerMs:       viper.GetInt64("dovecot_ticker_ms"),
@@ -207,15 +213,7 @@ func NewRescan(request *RescanRequest) (*Rescan, error) {
 	}
 	rescan.username = username
 
-	err := rescan.setMaildir()
-	if err != nil {
-		return nil, err
-	}
-
-	err = rescan.scanMessageFiles()
-	if err != nil {
-		return nil, err
-	}
+	var err error
 
 	rescan.filterctl, err = NewFilterctlClient()
 	if err != nil {
@@ -223,6 +221,16 @@ func NewRescan(request *RescanRequest) (*Rescan, error) {
 	}
 
 	rescan.doveadm, err = NewDoveadmClient()
+	if err != nil {
+		return nil, err
+	}
+
+	err = rescan.setMaildir()
+	if err != nil {
+		return nil, err
+	}
+
+	err = rescan.scanMessageFiles()
 	if err != nil {
 		return nil, err
 	}
@@ -385,21 +393,32 @@ func (r *Rescan) setMaildir() error {
 	if r.Status.Request.Folder == "/INBOX" {
 		r.mailDir = filepath.Join(MAILDIR_ROOT, r.username, "Maildir")
 		r.mailBox = "INBOX"
+		r.outBox = "INBOX.rescan"
+		r.outDir = filepath.Join(MAILDIR_ROOT, r.username, "Maildir", ".INBOX.rescan")
 	} else {
-		mailDir := strings.ReplaceAll(r.Status.Request.Folder, "/", ".")
-		if len(mailDir) < 2 {
-			return fmt.Errorf("maildir too short: %s", mailDir)
+		dir := strings.ReplaceAll(r.Status.Request.Folder, "/", ".")
+		if len(dir) < 2 {
+			return fmt.Errorf("maildir too short: %s", dir)
 		}
-		r.mailBox = mailDir[1:]
-		r.mailDir = filepath.Join(MAILDIR_ROOT, r.username, "Maildir", mailDir)
+		r.mailBox = dir[1:]
+		r.mailDir = filepath.Join(MAILDIR_ROOT, r.username, "Maildir", dir)
+		r.outBox = r.mailBox + ".rescan"
+		r.outDir = filepath.Join(MAILDIR_ROOT, r.username, "Maildir", dir+".rescan")
 	}
+
 	stat, err := os.Stat(r.mailDir)
 	if err != nil {
-		return fmt.Errorf("Maildir stat failed: %v", err)
+		return fmt.Errorf("Maildir stat '%s' failed: %v", r.mailDir, err)
 	}
 	if !stat.IsDir() {
 		return fmt.Errorf("Maildir is not a directory: %s", r.mailDir)
 	}
+
+	err = r.doveadm.MailboxCreate(r.username, r.outBox, r.subscribeRescan)
+	if err != nil {
+		return fmt.Errorf("Failed creating mailbox %s for user %s: %v", r.username, r.outBox, err)
+	}
+
 	if r.verbose {
 		log.Printf("setMaildir: folder=%s mailbox=%s maildir=%s\n", r.Status.Request.Folder, r.mailBox, r.mailDir)
 	}
@@ -618,7 +637,7 @@ func (r *Rescan) rescanMessage(index int) error {
 		log.Println("---END CHANGED HEADERS---")
 	}
 
-	outputPathname, err := r.generateOutputPathname("tmp", index)
+	outputPathname, err := r.generateOutputPathname(r.outDir, "tmp", index)
 	if err != nil {
 		return fmt.Errorf("generateOutputPathname: %v", err)
 	}
@@ -720,10 +739,10 @@ func (r *Rescan) mungeHeaders(index int, headers *textproto.Header, fromAddr, se
 
 	deleteHeaders := []string{
 		"x-address-book",
-		"x-rescanned",
 		"x-senderscore",
 		"x-spam",
 		"x-rspam",
+		"x-rescanned",
 		"x-sieve-filtered",
 	}
 	// delete headers if present
@@ -928,9 +947,9 @@ func (r *Rescan) getSenderScore(index int, addr string) (int, error) {
 	return score, nil
 }
 
-func (r *Rescan) generateOutputPathname(sub string, index int) (string, error) {
+func (r *Rescan) generateOutputPathname(dir, sub string, index int) (string, error) {
 
-	outDir := filepath.Join(r.mailDir, sub)
+	outDir := filepath.Join(dir, sub)
 
 	_, err := os.Stat(outDir)
 	if err != nil {
@@ -951,6 +970,7 @@ func (r *Rescan) generateOutputPathname(sub string, index int) (string, error) {
 		outputPath = generateNewBackupFilename(filepath.Join(outDir, fileName))
 	} else {
 		// we're generating the rescan output pathname, so strip the filename metadata
+		// FIXME: should we preserve the flags portion and regenerate the S=XXXX,W=XXXX size metadata?
 		match := FILENAME_PATTERN.FindStringSubmatch(fileName)
 		if len(match) > 1 {
 			fileName = match[1]
@@ -1026,16 +1046,20 @@ func copyFile(dst, src string) error {
 	return nil
 }
 
-// use dovecot API to replace original with modified, preserving original as backup
+// delete original, await dovecot expunge, move modified file to rescan/new, await dovecot import
 func (r *Rescan) replaceFile(index int, outputPathname string) error {
 
 	messageId := r.MessageFiles[index].MessageId
 	originalPathname := r.MessageFiles[index].Pathname
-	newPathname, err := r.generateOutputPathname("new", index)
+
+	newPathname, err := generateImapPathname(outputPathname, filepath.Join(r.outDir, "new"))
+	if err != nil {
+		return fmt.Errorf("generateImapPathname: %v", err)
+	}
 
 	var backupPathname string
 	if r.backupEnabled {
-		backupPathname, err = r.generateOutputPathname("tmp/backup", index)
+		backupPathname, err = r.generateOutputPathname(r.mailDir, "tmp/backup", index)
 		if err != nil {
 			return fmt.Errorf("generateOutputPathname failed on backup pathname: %v", err)
 
@@ -1077,7 +1101,7 @@ func (r *Rescan) replaceFile(index int, outputPathname string) error {
 	}
 
 	// wait for dovecot to report the messageID is no longer present in MAILDIR
-	err = r.dovecotWait(messageId, false)
+	err = r.dovecotWait(r.mailBox, messageId, false)
 	if err != nil {
 		return fmt.Errorf("dovecotWait failed awaiting original message removal from cur: %v", err)
 	}
@@ -1085,7 +1109,8 @@ func (r *Rescan) replaceFile(index int, outputPathname string) error {
 	if r.verbose {
 		log.Printf("replaceFile[%d] moving output to new: '%s' to '%s'\n", index, outputPathname, newPathname)
 	}
-	// move the rescan output file to MAILDIR/new; dovecot will processes it
+
+	// move the rescan output file to MAILDIR.rescan/new; dovecot will processes it
 	err = os.Rename(outputPathname, newPathname)
 	if err != nil {
 		return fmt.Errorf("Rename failed moving '%s' to '%s': %v", outputPathname, newPathname, err)
@@ -1095,16 +1120,10 @@ func (r *Rescan) replaceFile(index int, outputPathname string) error {
 		log.Printf("replaceFile[%d] awaiting dovecot new message import...\n", index)
 	}
 
-	// wait for dovecot to report the messageID is present in MAILDIR
-	err = r.dovecotWait(messageId, true)
+	// wait for dovecot to report the messageID is present in MAILDIR.rescan/cur
+	err = r.dovecotWait(r.outBox, messageId, true)
 	if err != nil {
 		return fmt.Errorf("dovecotWait failed awaiting new message import to cur: %v", err)
-	}
-
-	// set the Rescanned flag
-	err = r.doveadm.MessageAddFlag(r.username, r.mailBox, messageId, "$Rescanned")
-	if err != nil {
-		return fmt.Errorf("MessageAddFlag 'Rescanned' failed: %v", err)
 	}
 
 	if r.sleepSeconds != 0 {
@@ -1120,10 +1139,10 @@ func (r *Rescan) replaceFile(index int, outputPathname string) error {
 	return nil
 }
 
-func (r *Rescan) checkPresence(messageId string, targetState bool) (bool, error) {
-	present, err := r.doveadm.IsMessagePresent(r.username, r.mailBox, messageId)
+func (r *Rescan) checkPresence(mailBox, messageId string, targetState bool) (bool, error) {
+	present, err := r.doveadm.IsMessagePresent(r.username, mailBox, messageId)
 	if err != nil {
-		return false, fmt.Errorf("doveadm.isMessagePresent request failed %s %s %s:  %v", r.username, r.mailBox, messageId, err)
+		return false, fmt.Errorf("doveadm.isMessagePresent request failed %s %s %s:  %v", r.username, mailBox, messageId, err)
 	}
 	if present == targetState {
 		return true, nil
@@ -1132,7 +1151,7 @@ func (r *Rescan) checkPresence(messageId string, targetState bool) (bool, error)
 }
 
 // wait for dovecot to delete or create a message
-func (r *Rescan) dovecotWait(messageId string, targetState bool) error {
+func (r *Rescan) dovecotWait(mailBox, messageId string, targetState bool) error {
 
 	timeout := time.After(time.Duration(r.dovecotTimeoutSeconds) * time.Second)
 	delay := time.After(time.Duration(r.dovecotDelayMs) * time.Millisecond)
@@ -1143,7 +1162,7 @@ func (r *Rescan) dovecotWait(messageId string, targetState bool) error {
 	for {
 		select {
 		case <-delay:
-			done, err := r.checkPresence(messageId, targetState)
+			done, err := r.checkPresence(mailBox, messageId, targetState)
 			if err != nil {
 				return err
 			}
@@ -1152,7 +1171,7 @@ func (r *Rescan) dovecotWait(messageId string, targetState bool) error {
 			}
 		case <-ticker.C:
 			count++
-			done, err := r.checkPresence(messageId, targetState)
+			done, err := r.checkPresence(mailBox, messageId, targetState)
 			if err != nil {
 				return err
 			}
@@ -1178,4 +1197,41 @@ func generateNewBackupFilename(modified string) string {
 		version++
 	}
 	panic("unreachable")
+}
+
+func generateImapPathname(tempFile, outDir string) (string, error) {
+	now := time.Now()
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "", fmt.Errorf("failed getting hostname: %v", err)
+	}
+	micros := now.Nanosecond() / 1000
+	name := fmt.Sprintf("%d.M%dP%d.%s", now.Unix(), micros, os.Getpid(), hostname)
+	/*
+		stat, err := os.Stat(tempFile)
+		if err != nil {
+			return "", fmt.Errorf("Stat failed: %v", err)
+		}
+		file, err := os.Open(tempFile)
+		if err != nil {
+		    return "", fmt.Errorf("Open failed: %v", err)
+		}
+		defer file.Close()
+		var lines int64
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+		    lines += 1
+		}
+		err = scanner.Err()
+		if err != nil {
+		    return "", fmt.Errorf("failed scanning temp file: %v", err)
+		}
+		name = fmt.Sprintf("%s,S=%d,W=%d", name, stat.Size(), stat.Size()+lines)
+	*/
+	pathName := filepath.Join(outDir, name)
+	_, err = os.Stat(pathName)
+	if !errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("file existence Stat failed: %v", err)
+	}
+	return pathName, nil
 }

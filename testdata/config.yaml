@@ -12,7 +12,7 @@ dovecot_timeout_seconds: 2
 
 doveadm_url: http://127.0.0.1:2018
 doveadm_api_key: "Authorization"
-doveadm_verbose: false
+doveadm_verbose: true
 doveadm_debug: false
 
 test:
@@ -24,3 +24,5 @@ test:
   file: cur/1745204839.M337913P37678.mailbox.rstms.net,S=13531,W=13785:2,Sb
     #message_id: 01000193f0bcbbc2-4427d1e6-c9aa-4ee2-8852-9d2c529aca41-000000@email.amazonses.com
   message_id: 174632876925.31481.12243349829304726519@phobos.rstms.net
+  flag_test_message_id: 174589534370.82688.14744822461442097425@phobos.rstms.net
+  move_test_message_id: 174589534370.82688.14744822461442097425@phobos.rstms.net

@@ -1,0 +1,2551 @@
+[
+  {
+    "command": "mailboxMutf7",
+    "parameters": [
+      {
+        "name": "toUtf8",
+        "type": "boolean"
+      },
+      {
+        "name": "fromUtf8",
+        "type": "boolean"
+      },
+      {
+        "name": "name",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "serviceStop",
+    "parameters": [
+      {
+        "name": "service",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "serviceStatus",
+    "parameters": [
+      {
+        "name": "service",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "sisDeduplicate",
+    "parameters": [
+      {
+        "name": "rootDir",
+        "type": "string"
+      },
+      {
+        "name": "queueDir",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "sisFind",
+    "parameters": [
+      {
+        "name": "rootDir",
+        "type": "string"
+      },
+      {
+        "name": "hash",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "processStatus",
+    "parameters": [
+      {
+        "name": "service",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "stop",
+    "parameters": []
+  },
+  {
+    "command": "reload",
+    "parameters": []
+  },
+  {
+    "command": "statsDump",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "reset",
+        "type": "boolean"
+      },
+      {
+        "name": "fields",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "statsAdd",
+    "parameters": [
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "filter",
+        "type": "string"
+      },
+      {
+        "name": "exporter",
+        "type": "string"
+      },
+      {
+        "name": "exporterInclude",
+        "type": "string"
+      },
+      {
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "name": "fields",
+        "type": "string"
+      },
+      {
+        "name": "groupBy",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "statsRemove",
+    "parameters": [
+      {
+        "name": "name",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "oldstatsDump",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "type",
+        "type": "string"
+      },
+      {
+        "name": "filter",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "oldstatsReset",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "penalty",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "netmask",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "kick",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "force",
+        "type": "boolean"
+      },
+      {
+        "name": "mask",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "who",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "separateConnections",
+        "type": "boolean"
+      },
+      {
+        "name": "mask",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "directorStatus",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "tag",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "directorMap",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "usersFile",
+        "type": "string"
+      },
+      {
+        "name": "hashMap",
+        "type": "boolean"
+      },
+      {
+        "name": "userMap",
+        "type": "boolean"
+      },
+      {
+        "name": "host",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "directorAdd",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "tag",
+        "type": "string"
+      },
+      {
+        "name": "host",
+        "type": "string"
+      },
+      {
+        "name": "vhostCount",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "directorUpdate",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "host",
+        "type": "string"
+      },
+      {
+        "name": "vhostCount",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "directorUp",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "host",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "directorDown",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "host",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "directorRemove",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "host",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "directorMove",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "host",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "directorKick",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "passdbField",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "directorFlush",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "forceFlush",
+        "type": "boolean"
+      },
+      {
+        "name": "maxParallel",
+        "type": "integer"
+      },
+      {
+        "name": "host",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "directorDump",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "directorRingAdd",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "ip",
+        "type": "string"
+      },
+      {
+        "name": "port",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "directorRingRemove",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "ip",
+        "type": "string"
+      },
+      {
+        "name": "port",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "directorRingStatus",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "instanceList",
+    "parameters": [
+      {
+        "name": "showConfig",
+        "type": "boolean"
+      },
+      {
+        "name": "name",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "instanceRemove",
+    "parameters": [
+      {
+        "name": "name",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "proxyList",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "proxyKick",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "passdbField",
+        "type": "string"
+      },
+      {
+        "name": "host",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "logTest",
+    "parameters": []
+  },
+  {
+    "command": "logReopen",
+    "parameters": []
+  },
+  {
+    "command": "logFind",
+    "parameters": [
+      {
+        "name": "logDir",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "logErrors",
+    "parameters": [
+      {
+        "name": "since",
+        "type": "integer"
+      }
+    ]
+  },
+  {
+    "command": "replicatorStatus",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "userMask",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "replicatorDsyncStatus",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "replicatorReplicate",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "fullSync",
+        "type": "boolean"
+      },
+      {
+        "name": "priority",
+        "type": "string"
+      },
+      {
+        "name": "userMask",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "replicatorAdd",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "userMask",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "replicatorRemove",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "dictGet",
+    "parameters": [
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "dictUri",
+        "type": "string"
+      },
+      {
+        "name": "key",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "dictSet",
+    "parameters": [
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "dictUri",
+        "type": "string"
+      },
+      {
+        "name": "key",
+        "type": "string"
+      },
+      {
+        "name": "value",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "dictUnset",
+    "parameters": [
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "dictUri",
+        "type": "string"
+      },
+      {
+        "name": "key",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "dictInc",
+    "parameters": [
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "dictUri",
+        "type": "string"
+      },
+      {
+        "name": "key",
+        "type": "string"
+      },
+      {
+        "name": "difference",
+        "type": "integer"
+      }
+    ]
+  },
+  {
+    "command": "dictIter",
+    "parameters": [
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "exact",
+        "type": "boolean"
+      },
+      {
+        "name": "recurse",
+        "type": "boolean"
+      },
+      {
+        "name": "noValue",
+        "type": "boolean"
+      },
+      {
+        "name": "dictUri",
+        "type": "string"
+      },
+      {
+        "name": "prefix",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "fsGet",
+    "parameters": [
+      {
+        "name": "fsDriver",
+        "type": "string"
+      },
+      {
+        "name": "fsArgs",
+        "type": "string"
+      },
+      {
+        "name": "path",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "fsPut",
+    "parameters": [
+      {
+        "name": "hash",
+        "type": "string"
+      },
+      {
+        "name": "fsDriver",
+        "type": "string"
+      },
+      {
+        "name": "fsArgs",
+        "type": "string"
+      },
+      {
+        "name": "inputPath",
+        "type": "string"
+      },
+      {
+        "name": "path",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "fsCopy",
+    "parameters": [
+      {
+        "name": "fsDriver",
+        "type": "string"
+      },
+      {
+        "name": "fsArgs",
+        "type": "string"
+      },
+      {
+        "name": "sourcePath",
+        "type": "string"
+      },
+      {
+        "name": "destinationPath",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "fsStat",
+    "parameters": [
+      {
+        "name": "fsDriver",
+        "type": "string"
+      },
+      {
+        "name": "fsArgs",
+        "type": "string"
+      },
+      {
+        "name": "path",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "fsMetadata",
+    "parameters": [
+      {
+        "name": "fsDriver",
+        "type": "string"
+      },
+      {
+        "name": "fsArgs",
+        "type": "string"
+      },
+      {
+        "name": "path",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "fsDelete",
+    "parameters": [
+      {
+        "name": "recursive",
+        "type": "boolean"
+      },
+      {
+        "name": "maxParallel",
+        "type": "integer"
+      },
+      {
+        "name": "fsDriver",
+        "type": "string"
+      },
+      {
+        "name": "fsArgs",
+        "type": "string"
+      },
+      {
+        "name": "path",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "fsIter",
+    "parameters": [
+      {
+        "name": "noCache",
+        "type": "boolean"
+      },
+      {
+        "name": "objectIds",
+        "type": "boolean"
+      },
+      {
+        "name": "fsDriver",
+        "type": "string"
+      },
+      {
+        "name": "fsArgs",
+        "type": "string"
+      },
+      {
+        "name": "path",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "fsIterDirs",
+    "parameters": [
+      {
+        "name": "fsDriver",
+        "type": "string"
+      },
+      {
+        "name": "fsArgs",
+        "type": "string"
+      },
+      {
+        "name": "path",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "authCacheFlush",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "user",
+    "parameters": [
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "authInfo",
+        "type": "array"
+      },
+      {
+        "name": "field",
+        "type": "string"
+      },
+      {
+        "name": "expandField",
+        "type": "string"
+      },
+      {
+        "name": "userdbOnly",
+        "type": "boolean"
+      },
+      {
+        "name": "userMask",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "batch",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "separator",
+        "type": "string"
+      },
+      {
+        "name": "args",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "backup",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "fullSync",
+        "type": "boolean"
+      },
+      {
+        "name": "purgeRemote",
+        "type": "boolean"
+      },
+      {
+        "name": "reverseSync",
+        "type": "boolean"
+      },
+      {
+        "name": "replicatorNotify",
+        "type": "boolean"
+      },
+      {
+        "name": "lockTimeout",
+        "type": "integer"
+      },
+      {
+        "name": "rawlog",
+        "type": "string"
+      },
+      {
+        "name": "mailbox",
+        "type": "string"
+      },
+      {
+        "name": "mailboxGuid",
+        "type": "string"
+      },
+      {
+        "name": "namespace",
+        "type": "array"
+      },
+      {
+        "name": "allNamespaces",
+        "type": "boolean"
+      },
+      {
+        "name": "excludeMailbox",
+        "type": "array"
+      },
+      {
+        "name": "allMailbox",
+        "type": "string"
+      },
+      {
+        "name": "state",
+        "type": "string"
+      },
+      {
+        "name": "syncSinceTime",
+        "type": "string"
+      },
+      {
+        "name": "syncUntilTime",
+        "type": "string"
+      },
+      {
+        "name": "syncFlags",
+        "type": "string"
+      },
+      {
+        "name": "syncMaxSize",
+        "type": "string"
+      },
+      {
+        "name": "timeout",
+        "type": "integer"
+      },
+      {
+        "name": "defaultDestination",
+        "type": "boolean"
+      },
+      {
+        "name": "legacyDsync",
+        "type": "boolean"
+      },
+      {
+        "name": "destination",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "sync",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "fullSync",
+        "type": "boolean"
+      },
+      {
+        "name": "purgeRemote",
+        "type": "boolean"
+      },
+      {
+        "name": "reverseSync",
+        "type": "boolean"
+      },
+      {
+        "name": "replicatorNotify",
+        "type": "boolean"
+      },
+      {
+        "name": "lockTimeout",
+        "type": "integer"
+      },
+      {
+        "name": "rawlog",
+        "type": "string"
+      },
+      {
+        "name": "mailbox",
+        "type": "string"
+      },
+      {
+        "name": "mailboxGuid",
+        "type": "string"
+      },
+      {
+        "name": "namespace",
+        "type": "array"
+      },
+      {
+        "name": "allNamespaces",
+        "type": "boolean"
+      },
+      {
+        "name": "excludeMailbox",
+        "type": "array"
+      },
+      {
+        "name": "allMailbox",
+        "type": "string"
+      },
+      {
+        "name": "state",
+        "type": "string"
+      },
+      {
+        "name": "syncSinceTime",
+        "type": "string"
+      },
+      {
+        "name": "syncUntilTime",
+        "type": "string"
+      },
+      {
+        "name": "syncFlags",
+        "type": "string"
+      },
+      {
+        "name": "syncMaxSize",
+        "type": "string"
+      },
+      {
+        "name": "timeout",
+        "type": "integer"
+      },
+      {
+        "name": "defaultDestination",
+        "type": "boolean"
+      },
+      {
+        "name": "legacyDsync",
+        "type": "boolean"
+      },
+      {
+        "name": "destination",
+        "type": "array"
+      },
+      {
+        "name": "onewaySync",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "command": "dsyncServer",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "legacyDsync",
+        "type": "boolean"
+      },
+      {
+        "name": "rawlog",
+        "type": "string"
+      },
+      {
+        "name": "timeout",
+        "type": "integer"
+      },
+      {
+        "name": "replicatorNotify",
+        "type": "boolean"
+      },
+      {
+        "name": "ignoreArg",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "mailboxMetadataSet",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "allowEmptyMailboxName",
+        "type": "boolean"
+      },
+      {
+        "name": "mailbox",
+        "type": "string"
+      },
+      {
+        "name": "key",
+        "type": "string"
+      },
+      {
+        "name": "value",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "mailboxMetadataUnset",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "allowEmptyMailboxName",
+        "type": "boolean"
+      },
+      {
+        "name": "mailbox",
+        "type": "string"
+      },
+      {
+        "name": "key",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "mailboxMetadataGet",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "allowEmptyMailboxName",
+        "type": "boolean"
+      },
+      {
+        "name": "mailbox",
+        "type": "string"
+      },
+      {
+        "name": "key",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "mailboxMetadataList",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "allowEmptyMailboxName",
+        "type": "boolean"
+      },
+      {
+        "name": "prependPrefix",
+        "type": "boolean"
+      },
+      {
+        "name": "mailbox",
+        "type": "string"
+      },
+      {
+        "name": "keyPrefix",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "mailboxStatus",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "totalSum",
+        "type": "boolean"
+      },
+      {
+        "name": "field",
+        "type": "array"
+      },
+      {
+        "name": "mailboxMask",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "mailboxList",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "mutf7",
+        "type": "boolean"
+      },
+      {
+        "name": "utf8",
+        "type": "boolean"
+      },
+      {
+        "name": "subscriptions",
+        "type": "boolean"
+      },
+      {
+        "name": "mailboxMask",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "mailboxCreate",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "subscriptions",
+        "type": "boolean"
+      },
+      {
+        "name": "guid",
+        "type": "string"
+      },
+      {
+        "name": "mailbox",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "mailboxDelete",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "requireEmpty",
+        "type": "boolean"
+      },
+      {
+        "name": "subscriptions",
+        "type": "boolean"
+      },
+      {
+        "name": "recursive",
+        "type": "boolean"
+      },
+      {
+        "name": "unsafe",
+        "type": "boolean"
+      },
+      {
+        "name": "mailbox",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "mailboxRename",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "subscriptions",
+        "type": "boolean"
+      },
+      {
+        "name": "mailbox",
+        "type": "string"
+      },
+      {
+        "name": "newName",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "mailboxSubscribe",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "mailbox",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "mailboxUnsubscribe",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "mailbox",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "mailboxUpdate",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "mailboxGuid",
+        "type": "string"
+      },
+      {
+        "name": "uidValidity",
+        "type": "string"
+      },
+      {
+        "name": "minNextUid",
+        "type": "string"
+      },
+      {
+        "name": "minFirstRecentUid",
+        "type": "string"
+      },
+      {
+        "name": "minHighestModseq",
+        "type": "string"
+      },
+      {
+        "name": "minHighestPvtModseq",
+        "type": "string"
+      },
+      {
+        "name": "mailbox",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "mailboxPath",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "mailbox",
+        "type": "array"
+      },
+      {
+        "name": "type",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "fetch",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "field",
+        "type": "array"
+      },
+      {
+        "name": "query",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "save",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "mailbox",
+        "type": "string"
+      },
+      {
+        "name": "file",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "index",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "queue",
+        "type": "boolean"
+      },
+      {
+        "name": "maxRecent",
+        "type": "string"
+      },
+      {
+        "name": "mailboxMask",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "altmove",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "reverse",
+        "type": "boolean"
+      },
+      {
+        "name": "query",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "deduplicate",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "byMsgid",
+        "type": "boolean"
+      },
+      {
+        "name": "query",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "expunge",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "deleteEmptyMailbox",
+        "type": "boolean"
+      },
+      {
+        "name": "query",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "flagsAdd",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "flag",
+        "type": "array"
+      },
+      {
+        "name": "query",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "flagsRemove",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "flag",
+        "type": "array"
+      },
+      {
+        "name": "query",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "flagsReplace",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "flag",
+        "type": "array"
+      },
+      {
+        "name": "query",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "import",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "sourceUser",
+        "type": "string"
+      },
+      {
+        "name": "subscribe",
+        "type": "boolean"
+      },
+      {
+        "name": "sourceLocation",
+        "type": "string"
+      },
+      {
+        "name": "destParentMailbox",
+        "type": "string"
+      },
+      {
+        "name": "query",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "forceResync",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "fsck",
+        "type": "boolean"
+      },
+      {
+        "name": "mailboxMask",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "purge",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "search",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "query",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "copy",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "destinationMailbox",
+        "type": "string"
+      },
+      {
+        "name": "sourceType",
+        "type": "string"
+      },
+      {
+        "name": "sourceUser",
+        "type": "string"
+      },
+      {
+        "name": "query",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "move",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "destinationMailbox",
+        "type": "string"
+      },
+      {
+        "name": "sourceType",
+        "type": "string"
+      },
+      {
+        "name": "sourceUser",
+        "type": "string"
+      },
+      {
+        "name": "query",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "mailboxCacheDecision",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "all",
+        "type": "boolean"
+      },
+      {
+        "name": "fieldstr",
+        "type": "string"
+      },
+      {
+        "name": "lastUsed",
+        "type": "integer"
+      },
+      {
+        "name": "decision",
+        "type": "string"
+      },
+      {
+        "name": "mailbox",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "mailboxCacheRemove",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "query",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "mailboxCachePurge",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "mailbox",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "rebuildAttachments",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "query",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "sieveList",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "sieveGet",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "scriptname",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "sievePut",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "activate",
+        "type": "boolean"
+      },
+      {
+        "name": "scriptname",
+        "type": "string"
+      },
+      {
+        "name": "file",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "sieveDelete",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "ignoreActive",
+        "type": "boolean"
+      },
+      {
+        "name": "scriptname",
+        "type": "array"
+      }
+    ]
+  },
+  {
+    "command": "sieveActivate",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "scriptname",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "sieveDeactivate",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "command": "sieveRename",
+    "parameters": [
+      {
+        "name": "allUsers",
+        "type": "boolean"
+      },
+      {
+        "name": "socketPath",
+        "type": "string"
+      },
+      {
+        "name": "user",
+        "type": "string"
+      },
+      {
+        "name": "transFlags",
+        "type": "integer"
+      },
+      {
+        "name": "userFile",
+        "type": "string"
+      },
+      {
+        "name": "oldname",
+        "type": "string"
+      },
+      {
+        "name": "newname",
+        "type": "string"
+      }
+    ]
+  }
+]

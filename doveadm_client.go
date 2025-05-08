@@ -181,6 +181,16 @@ func (c *DoveadmClient) MessageExpunge(user, mailbox, messageId string) error {
 	return err
 }
 
+func (c *DoveadmClient) MessageMove(user, dstMailbox, srcMailbox, messageId string) error {
+	args := map[string]interface{}{
+		"user":               user,
+		"destinationMailbox": dstMailbox,
+		"query":              []string{"MAILBOX", srcMailbox, "HEADER", "MESSAGE-ID", messageId},
+	}
+	_, err := c.sendCommand("move", &args)
+	return err
+}
+
 func (c *DoveadmClient) MailboxExpunge(user, mailbox string) error {
 	args := map[string]interface{}{
 		"user":  user,
@@ -208,4 +218,34 @@ func (c *DoveadmClient) IsMessagePresent(user, mailbox, messageId string) (bool,
 		return false, err
 	}
 	return len(*results) > 0, nil
+}
+
+func (c *DoveadmClient) IsMailboxPresent(user, mailbox string) (bool, error) {
+	boxen, err := c.MailboxList(user)
+	if err != nil {
+		return false, err
+	}
+	for _, name := range *boxen {
+		if name == mailbox {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (c *DoveadmClient) MailboxCreate(user, mailbox string, subscribe bool) error {
+	present, err := c.IsMailboxPresent(user, mailbox)
+	if err != nil {
+		return err
+	}
+	if present {
+		return nil
+	}
+	args := map[string]interface{}{
+		"user":          user,
+		"mailbox":       mailbox,
+		"subscriptions": subscribe,
+	}
+	_, err = c.sendCommand("mailboxCreate", &args)
+	return err
 }
