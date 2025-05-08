@@ -152,7 +152,7 @@ func setViperDefaults() {
 	viper.SetDefault("backup_enabled", false)
 	viper.SetDefault("prune_seconds", 300)
 	viper.SetDefault("sleep_seconds", 0)
-	viper.SetDefault("subscribe_rescan", false)
+	viper.SetDefault("subscribe_rescan", true)
 	viperDefaultsSet = true
 }
 
