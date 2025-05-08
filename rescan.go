@@ -786,7 +786,7 @@ func (r *Rescan) rescanMessage(index int) error {
 func (r *Rescan) requestRescan(index int, fromAddr, rcptToAddr, deliveredToAddr, senderIP string, content *[]byte, response *RspamdResponse) error {
 
 	requestHeaders := map[string]string{
-		"settings": `{"symbols_disabled": ["DATE_IN_PAST"]}`,
+		"settings": `{"symbols_disabled": ["DATE_IN_PAST", "SPAM_FLAG"]}`,
 		"IP":       senderIP,
 		"From":     fromAddr,
 		"Rcpt":     rcptToAddr,
