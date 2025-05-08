@@ -1,0 +1,63 @@
+Return-Path: <test@mailcapsule.io>
+Delivered-To: mkrueger
+Received: from localhost
+	by mailbox.rstms.net with LMTP
+	id GV/ODMjcFmj1OgAA8o/S4w
+	(envelope-from <test@mailcapsule.io>)
+	for <mkrueger>; Sat, 03 May 2025 21:19:36 -0600
+Return-Path: <test@mailcapsule.io>
+Delivered-To: mkrueger@rstms.net
+Received: from bitbucket.rstms.net (bitbucket.rstms.net [5.78.129.9])
+	by mailbox.rstms.net (OpenSMTPD) with ESMTPSA id fd49c3e3 (TLSv1.3:TLS_AES_256_GCM_SHA384:256:NO) auth=yes user=relay
+	for <mkrueger@rstms.net>;
+	Sat, 3 May 2025 21:19:36 -0600 (MDT)
+X-Spam-Score: 1.499998 / 100
+X-Spam-Class: ham
+X-Spam: no
+X-Spam-Status: Yes, score=1.500 required=100.000
+	tests=[ARC_NA=0.000, ASN=0.000, BAYES_HAM=-0.000
+	CTYPE_MIXED_BOGUS=1.000, DKIM_TRACE=0.000, DMARC_POLICY_ALLOW=-0.500
+	FORCE_ACTION_UNCONDITIONAL_RSPAMD_HEADERS=0.000, FROM_EQ_ENVFROM=0.000
+	FROM_NO_DN=0.000, MIME_GOOD=-0.100, MIME_TRACE=0.000
+	MISSING_DATE=1.000, MISSING_XM_UA=0.000, MX_INVALID=0.500
+	PREVIOUSLY_DELIVERED=0.000, RCPT_COUNT_ONE=0.000, RCVD_COUNT_TWO=0.000
+	RCVD_TLS_ALL=0.000, RCVD_VIA_SMTP_AUTH=0.000
+	RECEIVED_SPAMHAUS_PBL=0.000, RSTMS_ALWAYS=0.000, R_DKIM_ALLOW=-0.200
+	R_SPF_ALLOW=-0.200, TO_DN_NONE=0.000, TO_MATCH_ENVRCPT_ALL=0.000]
+Authentication-Results: bitbucket.rstms.net;
+	dkim=pass header.d=mailcapsule.io header.s=capsule_1740109759 header.b=uE0PwDjS;
+	dmarc=pass (policy=none) header.from=mailcapsule.io;
+	spf=pass (bitbucket.rstms.net: domain of test@mailcapsule.io designates 5.78.41.86 as permitted sender) smtp.mailfrom=test@mailcapsule.io
+X-SenderScore: 127
+Received: from capsule.mailcapsule.io (capsule.mailcapsule.io [5.78.41.86])
+	by bitbucket.rstms.net (OpenSMTPD) with ESMTPS id 3d866e9c (TLSv1.3:TLS_AES_256_GCM_SHA384:256:NO)
+	for <mkrueger@rstms.net>;
+	Sat, 3 May 2025 21:19:32 -0600 (MDT)
+DKIM-Signature: v=1; a=rsa-sha256; c=simple/simple; s=capsule_1740109759; bh=e
+	waGJ604DybcmE4Y9XdAoqN78LbctYyqHckUv2oPcSc=; h=to:from:subject;
+	d=mailcapsule.io; b=uE0PwDjSU6hwpydXLfrpn1nV/17iNuJ23xncOaGIUdrYOSKnmv
+	qLbW5V9X4uOd7HptFOuHS4VXd/yFWU8luhVFcH8c3JGrqxu2W2o/jMwbXN7mmRx02BCkVK
+	c1M6TT5cSRjaum1g2iGTHTWeoCViM1YuvvpoY/lbG1u9gsdRB6E=
+Received: from phobos.rstms.net (c-76-127-63-132.hsd1.nm.comcast.net [76.127.63.132])
+	by capsule.mailcapsule.io (OpenSMTPD) with ESMTPSA id 8b468847 (TLSv1.3:TLS_AES_256_GCM_SHA384:256:NO) auth=yes user=test
+	for <mkrueger@rstms.net>;
+	Sat, 3 May 2025 21:19:29 -0600 (MDT)
+Content-Type: multipart/mixed; boundary="===============0009582827926654579=="
+MIME-Version: 1.0
+Subject: test5965
+From: test@mailcapsule.io
+X-Address-Book: 
+To: mkrueger@rstms.net
+Message-ID: <174632876925.31481.12243349829304726519@phobos.rstms.net>
+Date: Sat, 3 May 2025 21:19:36 -0600 (MDT)
+
+--===============0009582827926654579==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+
+As Gen. de Gaulle occassionally acknowledges America to be the daughter
+of Europe, so I am pleased to come to Yale, the daughter of Harvard.
+		-- J. F. Kennedy
+
+--===============0009582827926654579==--
