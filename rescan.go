@@ -611,6 +611,18 @@ func (r *Rescan) getMessageId(pathname string) (string, error) {
 		return "", fmt.Errorf("failed opening file %s: %v", pathname, err)
 	}
 	defer file.Close()
+	if r.verbose {
+		content, err := io.ReadAll(file)
+		if err != nil {
+			return "", fmt.Errorf("io.ReadAll failed: %v", err)
+		}
+		log.Printf("---begin preread---\n%v\n---end preread---\n", string(content))
+		_, err = file.Seek(0, 0)
+		if err != nil {
+			return "", fmt.Errorf("file.Seek failed: %v", err)
+		}
+	}
+
 	header, err := textproto.ReadHeader(bufio.NewReader(file))
 	if err != nil {
 		return "", fmt.Errorf("textproto.ReadHeader failed: %v", err)
