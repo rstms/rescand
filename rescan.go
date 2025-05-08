@@ -480,7 +480,7 @@ func (r *Rescan) importMessages() error {
 	}
 	args = append(args, []string{"-e", "-W", "-u", r.username, "-m", r.mailBox, r.sieveScript, r.outBox}...)
 	cmd := exec.Command(r.sieveFilter, args...)
-	cmdLine := fmt.Sprintf("%s %s", cmd.Path, strings.Join(cmd.Args, " "))
+	cmdLine := strings.Join(cmd.Args, " "))
 	if r.verbose {
 		log.Printf("sieve-filter command: %s\n", cmdLine)
 	}
