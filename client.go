@@ -176,9 +176,6 @@ func (a *APIClient) request(method, path string, requestData, responseData inter
 	if a.verbose {
 		log.Printf("--> (%d bytes)\n", len(body))
 	}
-	if a.debug {
-		log.Printf("BEGIN-RESPONSE-BODY\n%s\nEND-RESPONSE-BODY\n", string(body))
-	}
 	err = json.Unmarshal(body, responseData)
 	if err != nil {
 		return "", fmt.Errorf("failed decoding JSON response: %v", err)
@@ -191,6 +188,11 @@ func (a *APIClient) request(method, path string, requestData, responseData inter
 		text, err = json.MarshalIndent(responseData, "", "  ")
 		if err != nil {
 			return "", fmt.Errorf("failed formatting JSON response: %v", err)
+		}
+		if a.debug {
+			if a.debug {
+				log.Printf("BEGIN-RESPONSE-BODY\n%s\nEND-RESPONSE-BODY\n", string(text))
+			}
 		}
 	}
 	return string(text), nil
