@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
 	"github.com/google/uuid"
 	"github.com/spf13/viper"
@@ -648,11 +649,15 @@ func (r *Rescan) readHeader(pathname string, failIfCompressed bool) (*mail.Heade
 		return nil, nil
 	}
 
-	message, err := mail.CreateReader(file)
+	mailReader, err := mail.CreateReader(file)
 	if err != nil {
-		return nil, fmt.Errorf("CreateReader failed: %v", err)
+		if message.IsUnknownCharset(err) {
+			log.Printf("WARNING: %v\n", err)
+		} else {
+			return nil, fmt.Errorf("CreateReader failed: %v", err)
+		}
 	}
-	return &message.Header, nil
+	return &mailReader.Header, nil
 }
 
 func (r *Rescan) getMessageId(header *mail.Header, pathname string) (string, error) {
