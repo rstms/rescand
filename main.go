@@ -20,7 +20,7 @@ import (
 )
 
 const serverName = "rescand"
-const Version = "0.4.8"
+const Version = "0.4.9"
 
 const DEFAULT_CONFIG_FILE = "/etc/rescand/config.yaml"
 
