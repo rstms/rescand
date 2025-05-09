@@ -652,7 +652,7 @@ func (r *Rescan) readHeader(pathname string, failIfCompressed bool) (*mail.Heade
 	mailReader, err := mail.CreateReader(file)
 	if err != nil {
 		if message.IsUnknownCharset(err) {
-			log.Printf("WARNING: %v\n", err)
+		    log.Printf("WARNING: %v %s\n", err, pathname)
 		} else {
 			return nil, fmt.Errorf("CreateReader failed: %v", err)
 		}
