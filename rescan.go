@@ -823,7 +823,6 @@ func (r *Rescan) prepareRescanMessage(content *[]byte) (*[]byte, string, error) 
 	fields := headers.Fields()
 	for fields.Next() {
 		if fields.Key() == "Received" {
-			log.Printf("Received: %+v\n", fields.Value())
 			if strings.HasPrefix(fields.Value(), "from localhost") || strings.HasPrefix(fields.Value(), mailqueue) {
 				fields.Del()
 			} else if senderIP == "" {
