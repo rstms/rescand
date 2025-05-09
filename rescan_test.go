@@ -17,6 +17,7 @@ import (
 func TestServerRescanMessage(t *testing.T) {
 	InitializeTests(t)
 	InitializeTestMaildir(t)
+	viper.Set("api_debug", true)
 	request := RescanRequest{
 		Username:   viper.GetString("test.email"),
 		Folder:     viper.GetString("test.path"),

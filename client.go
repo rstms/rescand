@@ -157,8 +157,16 @@ func (a *APIClient) request(method, path string, requestData, responseData inter
 		return "", fmt.Errorf("failed creating %s request: %v", method, err)
 	}
 
+	// add the headers set up at instance init
 	for key, value := range a.Headers {
 		request.Header.Add(key, value)
+	}
+
+	if headers != nil {
+		// add the headers passed in to this request
+		for key, value := range *headers {
+			request.Header.Add(key, value)
+		}
 	}
 
 	response, err := a.Client.Do(request)
