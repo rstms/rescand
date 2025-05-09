@@ -68,7 +68,7 @@ func NewAPIClient(url string, headers *map[string]string) (*APIClient, error) {
 	api := APIClient{
 		URL:     url,
 		Headers: make(map[string]string),
-		debug:   viper.GetBool("debug"),
+		debug:   viper.GetBool("api_debug"),
 		verbose: viper.GetBool("verbose"),
 	}
 

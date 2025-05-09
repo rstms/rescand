@@ -1,0 +1,2 @@
+when shutting down, signal rescans that are waiting to be pruned to prune now
+
