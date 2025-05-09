@@ -1,11 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/emersion/go-message/textproto"
+	"github.com/emersion/go-message/mail"
 	"github.com/google/uuid"
 	"github.com/spf13/viper"
 	"io"
@@ -74,6 +73,7 @@ type MessageFile struct {
 	From      string
 	Subject   string
 	Date      string
+	header    *mail.Header
 }
 
 type RescanRequest struct {
@@ -333,11 +333,11 @@ func (r *Rescan) Start() {
 								Message:  fmt.Sprintf("%v", result.err),
 								Pathname: r.MessageFiles[result.index].Pathname,
 								Headers: map[string]string{
-									"Date":      r.MessageFiles[result.index].Date,
-									"To":        r.MessageFiles[result.index].To,
-									"From":      r.MessageFiles[result.index].From,
-									"Subject":   r.MessageFiles[result.index].Subject,
-									"Mesage-Id": r.MessageFiles[result.index].MessageId,
+									"Date":       r.MessageFiles[result.index].Date,
+									"To":         r.MessageFiles[result.index].To,
+									"From":       r.MessageFiles[result.index].From,
+									"Subject":    r.MessageFiles[result.index].Subject,
+									"Message-Id": r.MessageFiles[result.index].MessageId,
 								},
 							}
 							r.Status.Errors = append(r.Status.Errors, rescanError)
@@ -542,9 +542,16 @@ func (r *Rescan) scanMessageFiles() error {
 				if hasTrashFlag(pathname) {
 					continue
 				}
-				mid, err := r.getMessageId(pathname)
+				header, err := r.readHeader(pathname, false)
 				if err != nil {
 					return err
+				}
+				mid, err := r.getMessageId(header, pathname)
+				if err != nil {
+					return err
+				}
+				if mid == "" {
+					continue
 				}
 				r.MessageFiles = append(r.MessageFiles, MessageFile{
 					MessageId: mid,
@@ -552,6 +559,7 @@ func (r *Rescan) scanMessageFiles() error {
 					Info:      info,
 					UID:       info.Sys().(*syscall.Stat_t).Uid,
 					GID:       info.Sys().(*syscall.Stat_t).Gid,
+					header:    header,
 				})
 			}
 		}
@@ -568,9 +576,16 @@ func (r *Rescan) scanMessageFiles() error {
 				if hasTrashFlag(pathname) {
 					continue
 				}
-				mid, err := r.getMessageId(pathname)
+				header, err := r.readHeader(pathname, false)
 				if err != nil {
 					return err
+				}
+				mid, err := r.getMessageId(header, pathname)
+				if err != nil {
+					return err
+				}
+				if mid == "" {
+					continue
 				}
 				if idMap[mid] {
 					info, err := entry.Info()
@@ -583,6 +598,7 @@ func (r *Rescan) scanMessageFiles() error {
 						Info:      info,
 						UID:       info.Sys().(*syscall.Stat_t).Uid,
 						GID:       info.Sys().(*syscall.Stat_t).Gid,
+						header:    header,
 					})
 				}
 			}
@@ -612,34 +628,47 @@ func hasTrashFlag(pathname string) bool {
 	return false
 }
 
-func (r *Rescan) getMessageId(pathname string) (string, error) {
+func (r *Rescan) readHeader(pathname string, failIfCompressed bool) (*mail.Header, error) {
+
 	file, err := os.Open(pathname)
 	if err != nil {
-		return "", fmt.Errorf("failed opening file %s: %v", pathname, err)
+		return nil, fmt.Errorf("failed opening file %s: %v", pathname, err)
 	}
 	defer file.Close()
 
 	fileType, err := DetectCompressedFile(file)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if fileType != nil {
+		if failIfCompressed {
+			return nil, fmt.Errorf("Failed reading header from %s compressed file: %s", *fileType, pathname)
+		}
 		log.Printf("WARNING: %s compressed file: %s\n", *fileType, pathname)
-		return "", nil
+		return nil, nil
 	}
 
-	header, err := textproto.ReadHeader(bufio.NewReader(file))
+	message, err := mail.CreateReader(file)
 	if err != nil {
-		return "", fmt.Errorf("textproto.ReadHeader failed: %v", err)
+		return nil, fmt.Errorf("CreateReader failed: %v", err)
 	}
-	mid := header.Get("Message-Id")
-	mid = strings.TrimSpace(mid)
-	mid = strings.TrimLeft(mid, "<")
-	mid = strings.TrimRight(mid, ">")
-	mid = strings.TrimSpace(mid)
-	if len(mid) == 0 {
+	return &message.Header, nil
+}
+
+func (r *Rescan) getMessageId(header *mail.Header, pathname string) (string, error) {
+	var mid string
+	if header != nil {
+		mid = header.Get("Message-Id")
+		mid = strings.TrimSpace(mid)
+		mid = strings.TrimLeft(mid, "<")
+		mid = strings.TrimRight(mid, ">")
+		mid = strings.TrimSpace(mid)
+	}
+
+	if mid == "" {
 		log.Printf("WARNING: missing Message-Id header: %s\n", pathname)
 	}
+
 	if r.verboseDebug {
 		log.Printf("getMessageId returning: %s\n", mid)
 	}
@@ -648,75 +677,69 @@ func (r *Rescan) getMessageId(pathname string) (string, error) {
 
 func (r *Rescan) rescanMessage(index int) error {
 
-	inputPathname := r.MessageFiles[index].Pathname
+	pathname := r.MessageFiles[index].Pathname
+	header := r.MessageFiles[index].header
+
 	if r.verbose {
-		log.Printf("rescanMessage[%d] reading input file: %s\n", index, inputPathname)
+		log.Printf("rescanMessage[%d] reading input file: %s\n", index, pathname)
 	}
-	content, err := os.ReadFile(inputPathname)
+	content, err := os.ReadFile(pathname)
 	if err != nil {
-		return fmt.Errorf("failed reading input file %s: %v", inputPathname, err)
+		return fmt.Errorf("failed reading input file %s: %v", pathname, err)
 	}
 	lines := strings.Split(string(content), "\n")
 
 	if r.verboseDebug {
 		log.Println("---BEGIN SRC HEADERS---")
-		for _, line := range lines {
-			log.Println(line)
-			if len(strings.TrimSpace(line)) == 0 {
-				break
-			}
+		fields := header.Fields()
+		for fields.Next() {
+			log.Printf("%s: %s\n", fields.Key(), fields.Value())
 		}
 		log.Println("---END SRC HEADERS---")
 	}
 
-	headers, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(content)))
-	if err != nil {
-		return fmt.Errorf("textproto.ReadHeader failed reading input file headers: %v", err)
-	}
-	keys := getKeys(&headers)
+	keys := getKeys(header)
 
-	mid := headers.Get("Message-Id")
-	mid = strings.TrimLeft(mid, "<")
-	mid = strings.TrimRight(mid, ">")
-	if mid != r.MessageFiles[index].MessageId {
-		return fmt.Errorf("MessageId mismatch; expected '%s' but got '%s' %+v", r.MessageFiles[index].MessageId, mid, r.MessageFiles[index])
+	r.MessageFiles[index].Subject, err = header.Subject()
+	if err != nil {
+		return fmt.Errorf("failed parsing Subject header: %v", err)
 	}
 
-	r.MessageFiles[index].Subject = headers.Get("Subject")
-	r.MessageFiles[index].Date = headers.Get("Date")
-
-	fromAddr, err := r.parseHeaderAddr(index, &headers, "From")
+	headerDate, err := header.Date()
 	if err != nil {
-		return fmt.Errorf("parseHeaderAddr: %v", err)
+		return fmt.Errorf("failed parsing Date header: %v", err)
+	}
+	r.MessageFiles[index].Date = headerDate.Format(time.DateTime)
+
+	fromAddr, err := r.parseHeaderAddress(index, header, "From")
+	if err != nil {
+		return err
 	}
 	r.MessageFiles[index].From = fromAddr
 
-	rcptToAddr, err := r.parseHeaderAddr(index, &headers, "To")
+	toAddr, err := r.parseHeaderAddress(index, header, "To")
 	if err != nil {
-		return fmt.Errorf("parseHeaderAddr: %v", err)
+		return err
 	}
+	r.MessageFiles[index].To = toAddr
 
-	deliveredToAddr, err := r.parseDeliveredToAddr(index, &headers)
+	deliveredToAddr, err := r.parseHeaderAddress(index, header, "Delivered-To")
 	if err != nil {
-		return fmt.Errorf("parseDeliveredToAddAddr: %v", err)
+		return err
 	}
 
-	if r.MessageFiles[index].To == "" {
-		r.MessageFiles[index].To = deliveredToAddr
-	}
-
-	rescanMessage, senderIP, err := r.prepareRescanMessage(&content)
+	rescanMessage, senderIP, err := r.prepareRescanMessage(header.Copy(), &lines)
 	if err != nil {
 		return fmt.Errorf("prepareRescanMessage: %v", err)
 	}
 
 	var response RspamdResponse
-	err = r.requestRescan(index, fromAddr, rcptToAddr, deliveredToAddr, senderIP, rescanMessage, &response)
+	err = r.requestRescan(index, fromAddr, toAddr, deliveredToAddr, senderIP, rescanMessage, &response)
 	if err != nil {
 		return fmt.Errorf("requestRescan: %v", err)
 	}
 
-	err = r.mungeHeaders(index, &headers, fromAddr, senderIP, &response, &keys)
+	err = r.mungeHeaders(index, header, fromAddr, senderIP, &response, &keys)
 	if err != nil {
 		return fmt.Errorf("mungeHeaders: %v", err)
 	}
@@ -736,7 +759,7 @@ func (r *Rescan) rescanMessage(index int) error {
 			return fmt.Errorf("os.Create failed creating output file '%s': %v", outputPathname, err)
 		}
 		defer outfile.Close()
-		err = r.writeMessage(outfile, &headers, &lines)
+		err = r.writeMessage(outfile, header, &lines)
 		if err != nil {
 			return fmt.Errorf("writeMessage failed writing output file '%s': %v", outputPathname, err)
 		}
@@ -758,7 +781,7 @@ func (r *Rescan) rescanMessage(index int) error {
 	return nil
 }
 
-func (r *Rescan) writeMessage(outfile io.Writer, headers *textproto.Header, lines *[]string) error {
+func (r *Rescan) writeMessage(outfile io.Writer, headers *mail.Header, lines *[]string) error {
 	fields := headers.Fields()
 	for fields.Next() {
 		data, err := fields.Raw()
@@ -788,17 +811,12 @@ func (r *Rescan) writeMessage(outfile io.Writer, headers *textproto.Header, line
 	return nil
 }
 
-func (r *Rescan) prepareRescanMessage(content *[]byte) (*[]byte, string, error) {
+func (r *Rescan) prepareRescanMessage(header mail.Header, lines *[]string) (*[]byte, string, error) {
 
-	// read a separate copy of the headers
-	headers, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(*content)))
-	if err != nil {
-		return nil, "", fmt.Errorf("textproto.ReadHeader failed: %v", err)
-	}
-	keys := getKeys(&headers)
+	keys := getKeys(&header)
 
 	// remove message headers before sending it to be rescanned
-	deleteHeaders := []string{
+	deleteKeys := []string{
 		"x-address-book",
 		"x-senderscore",
 		"x-spam",
@@ -808,9 +826,9 @@ func (r *Rescan) prepareRescanMessage(content *[]byte) (*[]byte, string, error) 
 	}
 	// delete headers if present
 	for _, key := range keys {
-		for _, deleteHeader := range deleteHeaders {
-			if strings.HasPrefix(strings.ToLower(key), deleteHeader) {
-				headers.Del(key)
+		for _, deleteKey := range deleteKeys {
+			if strings.HasPrefix(strings.ToLower(key), deleteKey) {
+				header.Del(key)
 			}
 		}
 	}
@@ -820,7 +838,7 @@ func (r *Rescan) prepareRescanMessage(content *[]byte) (*[]byte, string, error) 
 	// so that rspamd sees the received lines as delivered
 	mailqueue := fmt.Sprintf("from %s", r.hostname)
 	var senderIP string
-	fields := headers.Fields()
+	fields := header.Fields()
 	for fields.Next() {
 		if fields.Key() == "Received" {
 			if strings.HasPrefix(fields.Value(), "from localhost") || strings.HasPrefix(fields.Value(), mailqueue) {
@@ -835,9 +853,8 @@ func (r *Rescan) prepareRescanMessage(content *[]byte) (*[]byte, string, error) 
 		}
 	}
 
-	lines := strings.Split(string(*content), "\n")
 	var oBuf bytes.Buffer
-	err = r.writeMessage(&oBuf, &headers, &lines)
+	err := r.writeMessage(&oBuf, &header, lines)
 	if err != nil {
 		return nil, "", fmt.Errorf("writeMessage failed writing message rescan buffer: %v", err)
 	}
@@ -845,13 +862,13 @@ func (r *Rescan) prepareRescanMessage(content *[]byte) (*[]byte, string, error) 
 	return &rescanContent, senderIP, nil
 }
 
-func (r *Rescan) requestRescan(index int, fromAddr, rcptToAddr, deliveredToAddr, senderIP string, content *[]byte, response *RspamdResponse) error {
+func (r *Rescan) requestRescan(index int, fromAddr, toAddr, deliveredToAddr, senderIP string, content *[]byte, response *RspamdResponse) error {
 
 	requestHeaders := map[string]string{
 		"Settings":   `{"symbols_disabled": ["DATE_IN_PAST", "SPAM_FLAG"]}`,
 		"IP":         senderIP,
 		"From":       fromAddr,
-		"Rcpt":       rcptToAddr,
+		"Rcpt":       toAddr,
 		"Hostname":   r.hostname,
 		"Deliver-To": r.username,
 	}
@@ -874,7 +891,7 @@ func (r *Rescan) requestRescan(index int, fromAddr, rcptToAddr, deliveredToAddr,
 	return nil
 }
 
-func (r *Rescan) mungeHeaders(index int, headers *textproto.Header, fromAddr, senderIP string, response *RspamdResponse, keys *[]string) error {
+func (r *Rescan) mungeHeaders(index int, headers *mail.Header, fromAddr, senderIP string, response *RspamdResponse, keys *[]string) error {
 
 	// delete headers RSPAM wants to delete
 	for key, _ := range response.Milter.RemoveHeaders {
@@ -999,7 +1016,7 @@ func (r *Rescan) mungeHeaders(index int, headers *textproto.Header, fromAddr, se
 	return nil
 }
 
-func getKeys(header *textproto.Header) []string {
+func getKeys(header *mail.Header) []string {
 	keys := []string{}
 	fields := header.Fields()
 	for fields.Next() {
@@ -1008,33 +1025,38 @@ func getKeys(header *textproto.Header) []string {
 	return keys
 }
 
-func (r *Rescan) parseHeaderAddr(index int, header *textproto.Header, key string) (string, error) {
-	value := header.Get(key)
-	if value == "" {
+func (r *Rescan) parseHeaderAddress(index int, header *mail.Header, key string) (string, error) {
+	if key == "Delivered-To" {
+		return r.parseDeliveredToAddress(index, header)
+	}
+	addrs, err := header.AddressList(key)
+	if err != nil {
+		return "", fmt.Errorf("failed parsing email address header '%s': %v", key, err)
+	}
+	var address string
+	if len(addrs) > 0 && addrs[0] != nil {
+		address = addrs[0].Address
+	} else {
 		return "", fmt.Errorf("header not found: %s", key)
 	}
-	emailAddress, err := parseEmailAddress(value)
-	if err != nil {
-		return "", fmt.Errorf("failed parsing email address from header '%s': %v", key, err)
-	}
 	if r.verboseDebug {
-		log.Printf("parseHeaderAddr[%d] returning: %s\n", index, emailAddress)
+		log.Printf("parseHeaderAddress[%d] '%s' returning: %s\n", index, key, address)
 	}
-	return emailAddress, nil
+	return address, nil
 }
 
-func (r *Rescan) parseDeliveredToAddr(index int, header *textproto.Header) (string, error) {
+func (r *Rescan) parseDeliveredToAddress(index int, header *mail.Header) (string, error) {
 	key := "Delivered-To"
 	for _, value := range header.Values(key) {
 		if strings.ContainsRune(value, '@') {
-			emailAddress, err := parseEmailAddress(value)
+			addr, err := mail.ParseAddress(value)
 			if err != nil {
-				return "", err
+				return "", fmt.Errorf("failed parsing email address header '%s': %v", key, err)
 			}
-			return emailAddress, nil
+			return addr.Address, nil
 		}
 	}
-	return "", fmt.Errorf("no email address header value found: %s", key)
+	return "", fmt.Errorf("email address value not found for header '%s'", key)
 }
 
 func (r *Rescan) getSenderScore(index int, addr string) (int, error) {

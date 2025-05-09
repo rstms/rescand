@@ -14,7 +14,7 @@ dovecot_timeout_seconds: 2
 
 doveadm_url: http://127.0.0.1:2018
 doveadm_api_key: "Authorization"
-doveadm_verbose: true
+#doveadm_verbose: true
 #doveadm_debug: false
 
 test:
