@@ -407,7 +407,7 @@ func (r *Rescan) Start() {
 		if len(actions) > 0 {
 			r.mutex.Lock()
 			for _, action := range actions {
-				log.Printf("Rescan[%d] action: moved to %s\n", action.mailbox)
+				log.Printf("Rescan[%d] action: moved to %s\n", action.index, action.mailbox)
 				r.Status.Actions = append(r.Status.Actions, r.makeResult(action.index, "moved to "+action.mailbox))
 			}
 			r.mutex.Unlock()
@@ -551,7 +551,8 @@ func (r *Rescan) importMessages() ([]RescanImportAction, error) {
 		if len(fields) > 1 {
 			index, ok := r.midMap[fields[0]]
 			if !ok {
-				return actions, fmt.Errorf("messageId lookup failed: %s", fields[0])
+				log.Printf("lookup failed: messageId=%s\nmap=%v\n", fields[0], r.midMap)
+				return actions, fmt.Errorf("import messageId lookup failed: %s", line)
 			}
 			action := RescanImportAction{index, fields[1]}
 			if r.verbose {
