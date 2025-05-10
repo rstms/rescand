@@ -149,7 +149,7 @@ type Rescan struct {
 	sieveVerbose          bool
 	wg                    sync.WaitGroup
 	verbose               bool
-	verboseDebug          bool
+	moreVerbose           bool
 	backupEnabled         bool
 	subscribeRescan       bool
 	dovecotDelayMs        int64
@@ -175,7 +175,7 @@ func setViperDefaults() {
 	viper.SetDefault("sieve_filter", "/usr/local/bin/sieve-filter")
 	viper.SetDefault("sieve_script", "/usr/local/lib/dovecot/sieve/new-mail.sieve")
 	viper.SetDefault("sieve_verbose", false)
-	viper.SetDefault("verbose_debug", false)
+	viper.SetDefault("extra_verbose", false)
 	viperDefaultsSet = true
 }
 
@@ -221,7 +221,7 @@ func NewRescan(request *RescanRequest) (*Rescan, error) {
 		},
 		MessageFiles:          make([]MessageFile, 0),
 		verbose:               viper.GetBool("verbose"),
-		verboseDebug:          viper.GetBool("verbose_debug"),
+		moreVerbose:           viper.GetBool("more_verbose"),
 		backupEnabled:         viper.GetBool("backup_enabled"),
 		subscribeRescan:       viper.GetBool("subscribe_rescan"),
 		sieveFilter:           viper.GetString("sieve_filter"),
@@ -234,6 +234,11 @@ func NewRescan(request *RescanRequest) (*Rescan, error) {
 		hostname:              viper.GetString("mailqueue_hostname"),
 		midMap:                make(map[string]int),
 	}
+
+	if rescan.moreVerbose {
+		rescan.verbose = true
+	}
+
 	rescan.Status.Request = request.Copy()
 
 	username, _, found := strings.Cut(request.Username, "@")
@@ -536,7 +541,7 @@ func (r *Rescan) importMessages() ([]RescanImportAction, error) {
 	}
 	exitCode := cmd.ProcessState.ExitCode()
 
-	if r.verbose {
+	if r.moreVerbose {
 		logLines("sieve-filter-stdout", oBuf.String())
 		logLines("sieve-filter-stderr", eBuf.String())
 	}
@@ -548,7 +553,6 @@ func (r *Rescan) importMessages() ([]RescanImportAction, error) {
 
 	for _, line := range strings.Split(eBuf.String(), "\n") {
 		fields := SIEVE_ACTION_PATTERN.FindStringSubmatch(line)
-		log.Printf("REGEX: %d %v\n", len(fields), fields)
 		if len(fields) > 1 {
 			mid := fields[1]
 			mailbox := fields[2]
@@ -664,8 +668,10 @@ func (r *Rescan) scanMessageFiles() error {
 	r.Status.Total = len(r.MessageFiles)
 	if r.verbose {
 		log.Printf("scanMessageFiles: dir=%s count=%d \n", dir, len(r.MessageFiles))
-		for i, messageFile := range r.MessageFiles {
-			log.Printf("  [%d] %+v\n", i, messageFile)
+		if r.moreVerbose {
+			for i, messageFile := range r.MessageFiles {
+				log.Printf("  [%d] %+v\n", i, messageFile)
+			}
 		}
 	}
 	return nil
@@ -727,7 +733,7 @@ func (r *Rescan) getMessageId(header *mail.Header, pathname string) (string, err
 		log.Printf("WARNING: missing Message-Id header: %s\n", pathname)
 	}
 
-	if r.verboseDebug {
+	if r.moreVerbose {
 		log.Printf("getMessageId returning: %s\n", mid)
 	}
 	return mid, nil
@@ -747,13 +753,13 @@ func (r *Rescan) rescanMessage(index int) error {
 	}
 	lines := strings.Split(string(content), "\n")
 
-	if r.verboseDebug {
-		log.Println("---BEGIN SRC HEADERS---")
+	if r.moreVerbose {
+		log.Println("---BEGIN RESCAN HEADERS---")
 		fields := header.Fields()
 		for fields.Next() {
 			log.Printf("%s: %s\n", fields.Key(), fields.Value())
 		}
-		log.Println("---END SRC HEADERS---")
+		log.Println("---END RESCAN HEADERS---")
 	}
 
 	keys := getKeys(header)
@@ -782,6 +788,7 @@ func (r *Rescan) rescanMessage(index int) error {
 
 	var toAddr string
 	if header.Get("To") == "" {
+		log.Printf("rescanMessage[%d] WARNING: 'To' header not found, using Delivered-To: %s", index, deliveredToAddr)
 		toAddr = deliveredToAddr
 	} else {
 		toAddr, err = r.parseHeaderAddress(index, header, "To")
@@ -941,7 +948,7 @@ func (r *Rescan) requestRescan(index int, fromAddr, toAddr, deliveredToAddr, sen
 		return fmt.Errorf("rspamd check request failed: %v", err)
 	}
 
-	if r.verboseDebug {
+	if r.moreVerbose {
 
 		for name := range response.Milter.RemoveHeaders {
 			log.Printf("requestRescan[%d] remove: %s\n", index, name)
@@ -971,7 +978,7 @@ func (r *Rescan) mungeHeaders(index int, headers *mail.Header, fromAddr, senderI
 	// copy the headers RSPAMD wants to add
 	for key, value := range response.Milter.AddHeaders {
 		if !skipAddKeys[key] {
-			if r.verboseDebug {
+			if r.moreVerbose {
 				log.Printf("mungeHeaders[%d] adding: '%s': '%s'\n", index, key, value.Value)
 			}
 			if strings.ContainsRune(value.Value, '\n') {
@@ -1013,13 +1020,13 @@ func (r *Rescan) mungeHeaders(index int, headers *mail.Header, fromAddr, senderI
 	spamStatus += "]\r\n"
 	headers.Del("X-Spam-Status")
 	headers.AddRaw([]byte("X-Spam-Status: " + spamStatus))
-	if r.verboseDebug {
+	if r.moreVerbose {
 		log.Printf("mungeHeaders[%d] adding: X-Spam-Status: %s\n", index, spamStatus)
 	}
 
 	spamScore := fmt.Sprintf("%.3f / %.3f", response.Score, response.Required)
 	headers.Set("X-Spam-Score", spamScore)
-	if r.verboseDebug {
+	if r.moreVerbose {
 		log.Printf("mungeHeaders[%d] adding: X-Spam-Score: %s\n", index, spamScore)
 
 	}
@@ -1029,7 +1036,7 @@ func (r *Rescan) mungeHeaders(index int, headers *mail.Header, fromAddr, senderI
 		log.Printf("mungeHeaders[%d] WARNING: senderscore lookup failed: %v", index, err)
 	} else {
 		headers.Set("X-SenderScore", fmt.Sprintf("%d", senderScore))
-		if r.verboseDebug {
+		if r.moreVerbose {
 			log.Printf("mungeHeaders[%d] adding: X-SenderScore: %d\n", index, senderScore)
 		}
 
@@ -1099,7 +1106,7 @@ func (r *Rescan) parseHeaderAddress(index int, header *mail.Header, key string) 
 	} else {
 		return "", fmt.Errorf("address '%s' not found in: %v", key, addrs)
 	}
-	if r.verboseDebug {
+	if r.moreVerbose {
 		log.Printf("parseHeaderAddress[%d] '%s' returning: %s\n", index, key, address)
 	}
 	return address, nil
@@ -1134,7 +1141,7 @@ func (r *Rescan) getSenderScore(index int, addr string) (int, error) {
 		ip4 := ip.To4()
 		score = int(ip4[3])
 	}
-	if r.verboseDebug {
+	if r.moreVerbose {
 		log.Printf("getSenderScore[%d] for %s returning: %d\n", index, addr, score)
 	}
 	return score, nil

@@ -10,9 +10,9 @@ import (
 )
 
 type DoveadmClient struct {
-	api     *APIClient
-	verbose bool
-	debug   bool
+	api         *APIClient
+	verbose     bool
+	moreVerbose bool
 }
 
 /*
@@ -46,12 +46,12 @@ func NewDoveadmClient() (*DoveadmClient, error) {
 		return nil, err
 	}
 	client := DoveadmClient{
-		api:     api,
-		verbose: viper.GetBool("doveadm_verbose"),
-		debug:   viper.GetBool("doveadm_debug"),
+		api:         api,
+		verbose:     viper.GetBool("doveadm_verbose"),
+		moreVerbose: viper.GetBool("doveadm_more_verbose"),
 	}
 	api.verbose = client.verbose
-	api.debug = client.debug
+	api.moreVerbose = client.moreVerbose
 	return &client, nil
 }
 

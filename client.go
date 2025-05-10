@@ -22,11 +22,11 @@ var ADDR_PATTERN = regexp.MustCompile(`^.*<([^>]*)>.*$`)
 var EMAIL_PATTERN = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 
 type APIClient struct {
-	Client  *http.Client
-	URL     string
-	Headers map[string]string
-	debug   bool
-	verbose bool
+	Client      *http.Client
+	URL         string
+	Headers     map[string]string
+	verbose     bool
+	moreVerbose bool
 }
 
 func GetViperPath(key string) (string, error) {
@@ -66,10 +66,14 @@ func NewAPIClient(url string, headers *map[string]string) (*APIClient, error) {
 	}
 
 	api := APIClient{
-		URL:     url,
-		Headers: make(map[string]string),
-		debug:   viper.GetBool("api_debug"),
-		verbose: viper.GetBool("verbose"),
+		URL:         url,
+		Headers:     make(map[string]string),
+		verbose:     viper.GetBool("verbose"),
+		moreVerbose: viper.GetBool("more_verbose"),
+	}
+
+	if api.moreVerbose {
+		api.verbose = true
 	}
 
 	if headers != nil {
@@ -157,12 +161,12 @@ func (a *APIClient) request(method, path string, requestData, responseData inter
 
 	if a.verbose {
 		log.Printf("<-- %s %s (%d bytes)", method, a.URL+path, len(requestBytes))
-		if a.debug { 
-			log.Println("BEGIN-REQUEST-HEADERS")
-			for key, value := range *request.Header {
+		if a.moreVerbose {
+			log.Println("BEGIN-REQUEST-HEADER")
+			for key, value := range request.Header {
 				log.Printf("%s: %s\n", key, value)
 			}
-			log.Println("END-REQUEST-HEADERS")
+			log.Println("END-REQUEST-HEADER")
 			log.Println("BEGIN-REQUEST-BODY")
 			log.Println(string(requestBytes))
 			log.Println("END-REQUEST-BODY")
@@ -197,10 +201,10 @@ func (a *APIClient) request(method, path string, requestData, responseData inter
 		if err != nil {
 			return "", fmt.Errorf("failed formatting JSON response: %v", err)
 		}
-		if a.debug {
-		    log.Println("BEGIN-RESPONSE-BODY")
-		    log.Println(string(text))
-		    log.Println("END-RESPONSE-BODY")
+		if a.moreVerbose {
+			log.Println("BEGIN-RESPONSE-BODY")
+			log.Println(string(text))
+			log.Println("END-RESPONSE-BODY")
 		}
 	}
 	return string(text), nil
@@ -265,16 +269,18 @@ func (a *APIClient) ScanSpamClass(username string, score float32) (string, error
 }
 
 func parseEmailAddress(address string) (string, error) {
+	parsed := address
 	if strings.ContainsRune(address, '<') {
 		matches := ADDR_PATTERN.FindStringSubmatch(address)
 		if matches == nil || len(matches) < 2 {
 			return "", fmt.Errorf("failed parsing address from: '%v'\n", address)
 		}
-		address = matches[1]
+		parsed = matches[1]
 	}
-
-	if !EMAIL_PATTERN.MatchString(address) {
-		return "", fmt.Errorf("invalid address: '%v'\n", address)
+	for _, addr := range strings.Split(parsed, " ") {
+		if EMAIL_PATTERN.MatchString(addr) {
+			return addr, nil
+		}
 	}
-	return address, nil
+	return "", fmt.Errorf("failed validating email address: '%v'\n", parsed)
 }
