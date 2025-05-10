@@ -35,7 +35,7 @@ const MAILDIR_ROOT = "/home"
 
 var IP_ADDR_PATTERN = regexp.MustCompile(`^[^[]*\[([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\].*`)
 var FILENAME_PATTERN = regexp.MustCompile(`^(.*),S=[0-9]+,W=[0-9]+:.*$`)
-var SIEVE_ACTION_PATTERN = regexp.MustCompile(`^sieve-filter[(]root[)]:.*msgid=<([^>]*)>: fileinto action: stored mail into mailbox '([^']*)'`)
+var SIEVE_ACTION_PATTERN = regexp.MustCompile(`^sieve-filter\(root\):.*msgid=<([^>]*)>: fileinto action: stored mail into mailbox '([^']*)'`)
 
 // these structures decode only what we need from the RSPAMD JSON response
 type AddHeader struct {
@@ -548,6 +548,7 @@ func (r *Rescan) importMessages() ([]RescanImportAction, error) {
 
 	for _, line := range strings.Split(eBuf.String(), "\n") {
 		fields := SIEVE_ACTION_PATTERN.FindStringSubmatch(line)
+		log.Printf("REGEX: %d %v\n", len(fields), fields)
 		if len(fields) > 1 {
 			index, ok := r.midMap[fields[0]]
 			if !ok {
