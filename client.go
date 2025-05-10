@@ -138,20 +138,6 @@ func (a *APIClient) request(method, path string, requestData, responseData inter
 		}
 	}
 
-	if a.verbose {
-		log.Printf("<-- %s %s (%d bytes)", method, a.URL+path, len(requestBytes))
-		if a.debug && headers != nil {
-			log.Println("BEGIN-REQUEST-HEADERS")
-			for key, value := range *headers {
-				log.Printf("%s: %s\n", key, value)
-			}
-			log.Println("END-REQUEST-HEADERS")
-		}
-		if a.debug {
-			log.Printf("BEGIN-REQUEST-BODY\n%s\nEND-REQUEST-BODY\n", string(requestBytes))
-		}
-	}
-
 	request, err := http.NewRequest(method, a.URL+path, bytes.NewBuffer(requestBytes))
 	if err != nil {
 		return "", fmt.Errorf("failed creating %s request: %v", method, err)
@@ -166,6 +152,20 @@ func (a *APIClient) request(method, path string, requestData, responseData inter
 		// add the headers passed in to this request
 		for key, value := range *headers {
 			request.Header.Add(key, value)
+		}
+	}
+
+	if a.verbose {
+		log.Printf("<-- %s %s (%d bytes)", method, a.URL+path, len(requestBytes))
+		if a.debug { 
+			log.Println("BEGIN-REQUEST-HEADERS")
+			for key, value := range *request.Header {
+				log.Printf("%s: %s\n", key, value)
+			}
+			log.Println("END-REQUEST-HEADERS")
+			log.Println("BEGIN-REQUEST-BODY")
+			log.Println(string(requestBytes))
+			log.Println("END-REQUEST-BODY")
 		}
 	}
 
@@ -198,9 +198,9 @@ func (a *APIClient) request(method, path string, requestData, responseData inter
 			return "", fmt.Errorf("failed formatting JSON response: %v", err)
 		}
 		if a.debug {
-			if a.debug {
-				log.Printf("BEGIN-RESPONSE-BODY\n%s\nEND-RESPONSE-BODY\n", string(text))
-			}
+		    log.Println("BEGIN-RESPONSE-BODY")
+		    log.Println(string(text))
+		    log.Println("END-RESPONSE-BODY")
 		}
 	}
 	return string(text), nil
@@ -209,7 +209,7 @@ func (a *APIClient) request(method, path string, requestData, responseData inter
 func (a *APIClient) ScanAddressBooks(username, address string) ([]string, error) {
 	var response ScanResponse
 
-	if a.debug {
+	if a.verbose {
 		log.Printf("ScanAddressBooks: %s %s\n", username, address)
 	}
 
@@ -232,7 +232,7 @@ func (a *APIClient) ScanAddressBooks(username, address string) ([]string, error)
 		return []string{}, fmt.Errorf("filterctl books request failed: %v\n", response.Message)
 	}
 
-	if a.debug {
+	if a.verbose {
 		log.Printf("ScanAddressBooks returning: %v\n", response.Books)
 	}
 	return response.Books, nil
@@ -240,7 +240,7 @@ func (a *APIClient) ScanAddressBooks(username, address string) ([]string, error)
 
 func (a *APIClient) ScanSpamClass(username string, score float32) (string, error) {
 
-	if a.debug {
+	if a.verbose {
 		log.Printf("ScanSpamClass: %s %f\n", username, score)
 	}
 
@@ -258,7 +258,7 @@ func (a *APIClient) ScanSpamClass(username string, score float32) (string, error
 	if !response.Success {
 		return "", fmt.Errorf("filterctl class request failed: %v\n", response.Message)
 	}
-	if a.debug {
+	if a.verbose {
 		log.Printf("ScanSpamClass returning: %s\n", response.Class)
 	}
 	return response.Class, nil
