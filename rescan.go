@@ -775,16 +775,21 @@ func (r *Rescan) rescanMessage(index int) error {
 	}
 	r.MessageFiles[index].From = fromAddr
 
-	toAddr, err := r.parseHeaderAddress(index, header, "To")
-	if err != nil {
-		return err
-	}
-	r.MessageFiles[index].To = toAddr
-
 	deliveredToAddr, err := r.parseHeaderAddress(index, header, "Delivered-To")
 	if err != nil {
 		return err
 	}
+
+	var toAddr string
+	if header.Get("To") == "" {
+		toAddr = deliveredToAddr
+	} else {
+		toAddr, err = r.parseHeaderAddress(index, header, "To")
+		if err != nil {
+			return err
+		}
+	}
+	r.MessageFiles[index].To = toAddr
 
 	rescanMessage, senderIP, err := r.prepareRescanMessage(header.Copy(), &lines)
 	if err != nil {
@@ -1095,7 +1100,7 @@ func (r *Rescan) parseHeaderAddress(index int, header *mail.Header, key string) 
 	if len(addrs) > 0 && addrs[0] != nil {
 		address = addrs[0].Address
 	} else {
-		return "", fmt.Errorf("header not found: %s", key)
+		return "", fmt.Errorf("address '%s' not found in: %v", key, addrs)
 	}
 	if r.verboseDebug {
 		log.Printf("parseHeaderAddress[%d] '%s' returning: %s\n", index, key, address)
