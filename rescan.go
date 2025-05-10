@@ -706,14 +706,18 @@ func (r *Rescan) readHeader(pathname string, failIfCompressed bool) (*mail.Heade
 	}
 
 	mailReader, err := mail.CreateReader(file)
-	if err != nil {
-		if message.IsUnknownCharset(err) {
-			log.Printf("WARNING: %v %s\n", err, pathname)
-		} else {
-			return nil, fmt.Errorf("CreateReader failed: %v", err)
-		}
+	if r.mailErr(pathname, err) != nil {
+		return nil, fmt.Errorf("CreateReader failed: %v", err)
 	}
 	return &mailReader.Header, nil
+}
+
+func (r *Rescan) mailErr(label string, err error) error {
+	if message.IsUnknownCharset(err) {
+		log.Printf("WARNING: %v %s\n", err, label)
+		return nil
+	}
+	return err
 }
 
 func (r *Rescan) getMessageId(header *mail.Header, pathname string) (string, error) {
@@ -762,7 +766,7 @@ func (r *Rescan) rescanMessage(index int) error {
 	keys := getKeys(header)
 
 	r.MessageFiles[index].Subject, err = header.Subject()
-	if err != nil {
+	if r.mailErr("Subject", err) != nil {
 		return fmt.Errorf("failed parsing Subject header: %v", err)
 	}
 
