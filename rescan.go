@@ -130,7 +130,7 @@ type RescanRunResult struct {
 
 type RescanImportAction struct {
 	index   int
-	message string
+	mailbox string
 }
 
 type Rescan struct {
@@ -157,6 +157,7 @@ type Rescan struct {
 	dovecotTimeoutSeconds int64
 	sleepSeconds          int64
 	hostname              string
+	midMap                map[string]int
 }
 
 var jobs sync.Mutex
@@ -231,6 +232,7 @@ func NewRescan(request *RescanRequest) (*Rescan, error) {
 		dovecotTickerMs:       viper.GetInt64("dovecot_ticker_ms"),
 		dovecotTimeoutSeconds: viper.GetInt64("dovecot_timeout_seconds"),
 		hostname:              viper.GetString("mailqueue_hostname"),
+		midMap:                make(map[string]int),
 	}
 	rescan.Status.Request = request.Copy()
 
@@ -265,6 +267,10 @@ func NewRescan(request *RescanRequest) (*Rescan, error) {
 	err = rescan.scanMessageFiles()
 	if err != nil {
 		return nil, err
+	}
+
+	for i, file := range rescan.MessageFiles {
+		rescan.midMap[file.MessageId] = i
 	}
 
 	func() {
@@ -401,8 +407,8 @@ func (r *Rescan) Start() {
 		if len(actions) > 0 {
 			r.mutex.Lock()
 			for _, action := range actions {
-				log.Printf("Rescan[%d] action: %+s\n", action.index, action.message)
-				r.Status.Actions = append(r.Status.Actions, r.makeResult(action.index, action.message))
+				log.Printf("Rescan[%d] action: moved to %s\n", action.mailbox)
+				r.Status.Actions = append(r.Status.Actions, r.makeResult(action.index, "moved to "+action.mailbox))
 			}
 			r.mutex.Unlock()
 		}
@@ -540,12 +546,18 @@ func (r *Rescan) importMessages() ([]RescanImportAction, error) {
 		return actions, fmt.Errorf("Import command failed with exit code %d", exitCode)
 	}
 
-	// sieve-filter(root): Info: sieve: msgid=<4db8948c1d40f1c0e7af494fd.eed3e4f6b7.20250407130221.a0b1abfc12.deaac1ac@mail4.sea91.rsgsv.net>: fileinto action: stored mail into mailbox 'FilterBook.blogs'
-
 	for _, line := range strings.Split(eBuf.String(), "\n") {
 		fields := SIEVE_ACTION_PATTERN.FindStringSubmatch(line)
 		if len(fields) > 1 {
-			log.Printf("fields: %v\n", fields[1:])
+			index, ok := r.midMap[fields[0]]
+			if !ok {
+				return actions, fmt.Errorf("messageId lookup failed: %s", fields[0])
+			}
+			action := RescanImportAction{index, fields[1]}
+			if r.verbose {
+				log.Printf("import action: %+v\n", action)
+			}
+			actions = append(actions, action)
 		}
 	}
 
