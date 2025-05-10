@@ -550,12 +550,13 @@ func (r *Rescan) importMessages() ([]RescanImportAction, error) {
 		fields := SIEVE_ACTION_PATTERN.FindStringSubmatch(line)
 		log.Printf("REGEX: %d %v\n", len(fields), fields)
 		if len(fields) > 1 {
-			index, ok := r.midMap[fields[0]]
+			mid := fields[1]
+			mailbox := fields[2]
+			index, ok := r.midMap[mid]
 			if !ok {
-				log.Printf("lookup failed: messageId=%s\nmap=%v\n", fields[0], r.midMap)
-				return actions, fmt.Errorf("import messageId lookup failed: %s", line)
+				return actions, fmt.Errorf("import messageId lookup failed: %v", fields)
 			}
-			action := RescanImportAction{index, fields[1]}
+			action := RescanImportAction{index, mailbox}
 			if r.verbose {
 				log.Printf("import action: %+v\n", action)
 			}
