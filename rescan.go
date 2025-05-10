@@ -792,7 +792,7 @@ func (r *Rescan) rescanMessage(index int) error {
 	} else {
 		r.MessageFiles[index].To, err = r.parseHeaderAddress(index, header, "To")
 		if err != nil {
-		    log.Printf("rescanMessage[%d] WARNING: invalid 'To' address: '%s'", index, header.Get("To"))
+			log.Printf("rescanMessage[%d] WARNING: invalid 'To' address: '%s'", index, header.Get("To"))
 		}
 	}
 
@@ -1036,12 +1036,14 @@ func (r *Rescan) mungeHeaders(index int, headers *mail.Header, fromAddr, senderI
 
 	books, err := r.filterctl.ScanAddressBooks(r.Status.Request.Username, fromAddr)
 	if err != nil {
-		return fmt.Errorf("filterctl ScanAddressBooks request failed: %v", err)
-	}
-	addressBookValue := strings.Join(books, ",")
-	headers.Add("X-Address-Book", addressBookValue)
-	if r.verbose {
-		log.Printf("mungeHeaders[%d] adding: X-Address-Book: %s\n", index, addressBookValue)
+		log.Printf("mungeHeaders[%d] WARNING: ScanAddressBooks: %v\n", err)
+		headers.Del("X-Address-Book")
+	} else {
+		addressBookValue := strings.Join(books, ",")
+		headers.Add("X-Address-Book", addressBookValue)
+		if r.verbose {
+			log.Printf("mungeHeaders[%d] adding: X-Address-Book: %s\n", index, addressBookValue)
+		}
 	}
 
 	class, err := r.filterctl.ScanSpamClass(r.Status.Request.Username, response.Score)
