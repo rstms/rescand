@@ -35,6 +35,7 @@ const MAILDIR_ROOT = "/home"
 
 var IP_ADDR_PATTERN = regexp.MustCompile(`^[^[]*\[([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\].*`)
 var FILENAME_PATTERN = regexp.MustCompile(`^(.*),S=[0-9]+,W=[0-9]+:.*$`)
+var SIEVE_ACTION_PATTERN = regexp.MustCompile(`^sieve-filter[(]root[)]:.*msgid=<([^>]*)>: fileinto action: stored mail into mailbox '([^']*)'`)
 
 // these structures decode only what we need from the RSPAMD JSON response
 type AddHeader struct {
@@ -539,12 +540,12 @@ func (r *Rescan) importMessages() ([]RescanImportAction, error) {
 		return actions, fmt.Errorf("Import command failed with exit code %d", exitCode)
 	}
 
+	// sieve-filter(root): Info: sieve: msgid=<4db8948c1d40f1c0e7af494fd.eed3e4f6b7.20250407130221.a0b1abfc12.deaac1ac@mail4.sea91.rsgsv.net>: fileinto action: stored mail into mailbox 'FilterBook.blogs'
+
 	for _, line := range strings.Split(eBuf.String(), "\n") {
-		if strings.HasPrefix(line, "sieve-filter(root)") {
-			fields := strings.Split(line, " ")
-			for i, field := range fields {
-				log.Printf("field[%d] %s\n", i, field)
-			}
+		fields := SIEVE_ACTION_PATTERN.FindStringSubmatch(line)
+		if len(fields) > 1 {
+			log.Printf("fields: %v\n", fields[1:])
 		}
 	}
 
