@@ -787,17 +787,14 @@ func (r *Rescan) rescanMessage(index int) error {
 		return err
 	}
 
-	var toAddr string
 	if header.Get("To") == "" {
-		log.Printf("rescanMessage[%d] WARNING: 'To' header not found, using Delivered-To: %s", index, deliveredToAddr)
-		toAddr = deliveredToAddr
+		log.Printf("rescanMessage[%d] WARNING: 'To' header not found", index)
 	} else {
-		toAddr, err = r.parseHeaderAddress(index, header, "To")
+		r.MessageFiles[index].To, err = r.parseHeaderAddress(index, header, "To")
 		if err != nil {
-			return err
+		    log.Printf("rescanMessage[%d] WARNING: invalid 'To' address: '%s'", index, header.Get("To"))
 		}
 	}
-	r.MessageFiles[index].To = toAddr
 
 	rescanMessage, senderIP, err := r.prepareRescanMessage(header.Copy(), &lines)
 	if err != nil {
@@ -805,7 +802,7 @@ func (r *Rescan) rescanMessage(index int) error {
 	}
 
 	var response RspamdResponse
-	err = r.requestRescan(index, fromAddr, toAddr, deliveredToAddr, senderIP, rescanMessage, &response)
+	err = r.requestRescan(index, fromAddr, deliveredToAddr, senderIP, rescanMessage, &response)
 	if err != nil {
 		return fmt.Errorf("requestRescan: %v", err)
 	}
@@ -933,13 +930,13 @@ func (r *Rescan) prepareRescanMessage(header mail.Header, lines *[]string) (*[]b
 	return &rescanContent, senderIP, nil
 }
 
-func (r *Rescan) requestRescan(index int, fromAddr, toAddr, deliveredToAddr, senderIP string, content *[]byte, response *RspamdResponse) error {
+func (r *Rescan) requestRescan(index int, fromAddr, deliveredToAddr, senderIP string, content *[]byte, response *RspamdResponse) error {
 
 	requestHeaders := map[string]string{
 		"Settings":   `{"symbols_disabled": ["DATE_IN_PAST", "SPAM_FLAG"]}`,
 		"IP":         senderIP,
 		"From":       fromAddr,
-		"Rcpt":       toAddr,
+		"Rcpt":       deliveredToAddr,
 		"Hostname":   r.hostname,
 		"Deliver-To": r.username,
 	}
