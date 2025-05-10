@@ -561,9 +561,6 @@ func (r *Rescan) importMessages() ([]RescanImportAction, error) {
 				return actions, fmt.Errorf("import messageId lookup failed: %v", fields)
 			}
 			action := RescanImportAction{index, mailbox}
-			if r.verbose {
-				log.Printf("import action: %+v\n", action)
-			}
 			actions = append(actions, action)
 		}
 	}
