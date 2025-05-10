@@ -475,7 +475,7 @@ func (r *Rescan) setMaildir() error {
 
 	stat, err := os.Stat(r.mailDir)
 	if err != nil {
-		return fmt.Errorf("Maildir stat '%s' failed: %v", r.mailDir, err)
+		return fmt.Errorf("Maildir stat failed: %v", err)
 	}
 	if !stat.IsDir() {
 		return fmt.Errorf("Maildir is not a directory: %s", r.mailDir)
@@ -686,7 +686,7 @@ func (r *Rescan) readHeader(pathname string, failIfCompressed bool) (*mail.Heade
 
 	file, err := os.Open(pathname)
 	if err != nil {
-		return nil, fmt.Errorf("failed opening file %s: %v", pathname, err)
+		return nil, fmt.Errorf("failed reading header: %v", err)
 	}
 	defer file.Close()
 
@@ -696,7 +696,7 @@ func (r *Rescan) readHeader(pathname string, failIfCompressed bool) (*mail.Heade
 	}
 	if fileType != nil {
 		if failIfCompressed {
-			return nil, fmt.Errorf("Failed reading header from %s compressed file: %s", *fileType, pathname)
+			return nil, fmt.Errorf("failed reading header: %s compressed file: %s", *fileType, pathname)
 		}
 		log.Printf("WARNING: %s compressed file: %s\n", *fileType, pathname)
 		return nil, nil
@@ -743,7 +743,7 @@ func (r *Rescan) rescanMessage(index int) error {
 	}
 	content, err := os.ReadFile(pathname)
 	if err != nil {
-		return fmt.Errorf("failed reading input file %s: %v", pathname, err)
+		return fmt.Errorf("failed reading input file: %v", err)
 	}
 	lines := strings.Split(string(content), "\n")
 
@@ -814,7 +814,7 @@ func (r *Rescan) rescanMessage(index int) error {
 	err = func() error {
 		outfile, err := os.Create(outputPathname)
 		if err != nil {
-			return fmt.Errorf("os.Create failed creating output file '%s': %v", outputPathname, err)
+			return fmt.Errorf("failed creating output file: %v", err)
 		}
 		defer outfile.Close()
 		err = r.writeMessage(outfile, header, &lines)
@@ -829,7 +829,7 @@ func (r *Rescan) rescanMessage(index int) error {
 
 	err = r.chownPath(outputPathname)
 	if err != nil {
-		return fmt.Errorf("chownPath failed on output file '%s': %v", outputPathname, err)
+		return fmt.Errorf("chownPath: %v", err)
 	}
 
 	err = r.replaceFile(index, outputPathname)
@@ -1150,7 +1150,7 @@ func (r *Rescan) generateOutputPathname(dir, sub string, index int) (string, err
 		}
 		err = r.chownPath(outDir)
 		if err != nil {
-			return "", fmt.Errorf("chownPath failed setting ownership of '%s': %v", outDir, err)
+			return "", fmt.Errorf("chownPath: %v", err)
 		}
 	}
 
@@ -1196,17 +1196,17 @@ func (r *Rescan) chownPath(path string) error {
 func copyFile(dst, src string) error {
 	srcInfo, err := os.Stat(src)
 	if err != nil {
-		return fmt.Errorf("stat failed on src '%s': %v", src, err)
+		return fmt.Errorf("stat failed on src: %v", err)
 	}
 	srcFile, err := os.Open(src)
 	if err != nil {
-		return fmt.Errorf("failed opening src '%s': %v", src, err)
+		return fmt.Errorf("failed opening src: %v", err)
 	}
 	defer srcFile.Close()
 
 	dstFile, err := os.Create(dst)
 	if err != nil {
-		return fmt.Errorf("failed creating dst '%s': %v", dst, err)
+		return fmt.Errorf("failed creating dst: %v", err)
 	}
 	_, err = io.Copy(dstFile, srcFile)
 	if err != nil {
@@ -1217,13 +1217,13 @@ func copyFile(dst, src string) error {
 	// replicate access mode bits
 	err = os.Chmod(dst, srcInfo.Mode())
 	if err != nil {
-		return fmt.Errorf("mode change failed on dst '%s': %v", dst, err)
+		return fmt.Errorf("mode change failed on dst: %v", err)
 	}
 
 	// replicate modification time
 	err = os.Chtimes(dst, time.Now(), srcInfo.ModTime())
 	if err != nil {
-		return fmt.Errorf("modification time change failed on dst '%s': %v", dst, err)
+		return fmt.Errorf("modification time change failed on dst: %v", err)
 	}
 
 	// replicate ownership
@@ -1231,7 +1231,7 @@ func copyFile(dst, src string) error {
 	gid := srcInfo.Sys().(*syscall.Stat_t).Gid
 	err = os.Chown(dst, int(uid), int(gid))
 	if err != nil {
-		return fmt.Errorf("ownership change failed on dst '%s': %v", dst, err)
+		return fmt.Errorf("ownership change failed on dst: %v", err)
 	}
 
 	return nil
