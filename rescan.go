@@ -83,10 +83,15 @@ type RescanRequest struct {
 	MessageIds []string
 }
 
-type RescanError struct {
+type RescanResult struct {
 	Message  string
 	Pathname string
 	Headers  map[string]string
+}
+
+type RescanAction struct {
+	index  int
+	action string
 }
 
 func (r *RescanRequest) Copy() RescanRequest {
@@ -107,7 +112,8 @@ type RescanStatus struct {
 	FailCount    int
 	LatestFile   string
 	Request      RescanRequest
-	Errors       []RescanError
+	Errors       []RescanResult
+	Actions      []RescanResult
 }
 
 func (s *RescanStatus) Copy() RescanStatus {
@@ -116,9 +122,14 @@ func (s *RescanStatus) Copy() RescanStatus {
 	return dup
 }
 
-type RescanResult struct {
+type RescanRunResult struct {
 	index int
 	err   error
+}
+
+type RescanImportAction struct {
+	index   int
+	message string
 }
 
 type Rescan struct {
@@ -201,7 +212,8 @@ func NewRescan(request *RescanRequest) (*Rescan, error) {
 		Status: RescanStatus{
 			Id:      uuid.New().String(),
 			Running: true,
-			Errors:  make([]RescanError, 0),
+			Errors:  make([]RescanResult, 0),
+			Actions: make([]RescanResult, 0),
 		},
 		MessageFiles:          make([]MessageFile, 0),
 		verbose:               viper.GetBool("verbose"),
@@ -283,13 +295,27 @@ func DeleteRescan(rescanId string) (bool, error) {
 	return found, nil
 }
 
+func (r *Rescan) makeResult(index int, message string) RescanResult {
+	return RescanResult{
+		Message:  message,
+		Pathname: r.MessageFiles[index].Pathname,
+		Headers: map[string]string{
+			"Date":       r.MessageFiles[index].Date,
+			"To":         r.MessageFiles[index].To,
+			"From":       r.MessageFiles[index].From,
+			"Subject":    r.MessageFiles[index].Subject,
+			"Message-Id": r.MessageFiles[index].MessageId,
+		},
+	}
+}
+
 func (r *Rescan) Start() {
 
 	maxActive := viper.GetInt("max_active")
 
 	limitChan := make(chan struct{}, maxActive)
 	startChan := make(chan int)
-	resultChan := make(chan RescanResult)
+	resultChan := make(chan RescanRunResult)
 
 	// local wg is the waitgroup for each message
 	var wg sync.WaitGroup
@@ -306,7 +332,7 @@ func (r *Rescan) Start() {
 						if r.verbose {
 							log.Printf("RescanMessage[%d] started\n", index)
 						}
-						var result RescanResult
+						var result RescanRunResult
 						result.index = index
 						result.err = r.rescanMessage(index)
 						resultChan <- result
@@ -330,20 +356,8 @@ func (r *Rescan) Start() {
 							}
 						} else {
 							r.Status.FailCount++
-							rescanError := RescanError{
-								Message:  fmt.Sprintf("%v", result.err),
-								Pathname: r.MessageFiles[result.index].Pathname,
-								Headers: map[string]string{
-									"Date":       r.MessageFiles[result.index].Date,
-									"To":         r.MessageFiles[result.index].To,
-									"From":       r.MessageFiles[result.index].From,
-									"Subject":    r.MessageFiles[result.index].Subject,
-									"Message-Id": r.MessageFiles[result.index].MessageId,
-								},
-							}
-							r.Status.Errors = append(r.Status.Errors, rescanError)
-							log.Printf("Rescan[%d] failed: %+v\n", result.index, rescanError)
-
+							r.Status.Errors = append(r.Status.Errors, r.makeResult(result.index, fmt.Sprintf("%v", result.err)))
+							log.Printf("Rescan[%d] failed: %+v\n", result.index, result.err)
 						}
 					}()
 				} else {
@@ -373,17 +387,26 @@ func (r *Rescan) Start() {
 		close(startChan)
 		close(resultChan)
 
-		err := r.importMessages()
+		actions, err := r.importMessages()
 		if err != nil {
 			r.mutex.Lock()
-			r.Status.Errors = append(r.Status.Errors, RescanError{Message: fmt.Sprintf("Failed importing messages: %v", err)})
+			r.Status.Errors = append(r.Status.Errors, RescanResult{Message: fmt.Sprintf("%v", err)})
+			r.mutex.Unlock()
+		}
+
+		if len(actions) > 0 {
+			r.mutex.Lock()
+			for _, action := range actions {
+				log.Printf("Rescan[%d] action: %+s\n", action.index, action.message)
+				r.Status.Actions = append(r.Status.Actions, r.makeResult(action.index, action.message))
+			}
 			r.mutex.Unlock()
 		}
 
 		err = r.deleteRescanMailbox()
 		if err != nil {
 			r.mutex.Lock()
-			r.Status.Errors = append(r.Status.Errors, RescanError{Message: fmt.Sprintf("Failed deleting rescan mailbox: %v", err)})
+			r.Status.Errors = append(r.Status.Errors, RescanResult{Message: fmt.Sprintf("Failed deleting rescan mailbox: %v", err)})
 			r.mutex.Unlock()
 		}
 
@@ -476,14 +499,16 @@ func (r *Rescan) deleteRescanMailbox() error {
 	return nil
 }
 
-func (r *Rescan) importMessages() error {
+func (r *Rescan) importMessages() ([]RescanImportAction, error) {
 
+	actions := []RescanImportAction{}
 	if r.verbose {
 		log.Printf("Importing rescanned messages from %s", r.outDir)
 	}
 	// /usr/local/bin/sieve-filter -e -W -u ${user} -m ${mailbox} ${sieve_script} ${mailbox}.rescan
 	args := []string{}
-	if r.verbose {
+	sieveVerbose := true
+	if sieveVerbose {
 		args = append(args, "-v")
 	}
 	args = append(args, []string{"-e", "-W", "-u", r.username, "-m", r.mailBox, r.sieveScript, r.outBox}...)
@@ -497,29 +522,31 @@ func (r *Rescan) importMessages() error {
 	cmd.Stderr = &eBuf
 	err := cmd.Run()
 	if err != nil {
-		return fmt.Errorf("Failed executing sieve-filter command: %v", err)
+		log.Printf("Failed import command: '%s'\n", cmdLine)
+		return actions, fmt.Errorf("Failed executing sieve-filter command: %v", err)
 	}
 	exitCode := cmd.ProcessState.ExitCode()
 
-	if exitCode != 0 {
-		log.Printf("Error: sieve filter command exited %d\n", cmd.ProcessState.ExitCode())
-		log.Printf("command: %s\n", cmdLine)
+	if sieveVerbose {
+		logLines("sieve-filter-stdout", oBuf.String())
 	}
 
-	if r.verbose || exitCode != 0 {
-		logLines("stdout", oBuf.String())
-	}
+	logLines("sieve-filter-stderr", eBuf.String())
 
 	if exitCode != 0 {
-		logLines("stderr", eBuf.String())
-		return fmt.Errorf("sieve-filter import exited %d: %s\n", cmd.ProcessState.ExitCode(), eBuf.String())
+		log.Printf("Error: import command '%s' exited %d\n", cmdLine, exitCode)
+		return actions, fmt.Errorf("Import command failed with exit code %d", exitCode)
 	}
-	return nil
+
+	return actions, nil
 }
 
 func logLines(label, output string) {
 	for _, line := range strings.Split(output, "\n") {
-		log.Printf("%s: %s\n", label, line)
+		line = strings.TrimSpace(line)
+		if line != "" {
+			log.Printf("%s: %s\n", label, line)
+		}
 	}
 }
 
@@ -652,7 +679,7 @@ func (r *Rescan) readHeader(pathname string, failIfCompressed bool) (*mail.Heade
 	mailReader, err := mail.CreateReader(file)
 	if err != nil {
 		if message.IsUnknownCharset(err) {
-		    log.Printf("WARNING: %v %s\n", err, pathname)
+			log.Printf("WARNING: %v %s\n", err, pathname)
 		} else {
 			return nil, fmt.Errorf("CreateReader failed: %v", err)
 		}
