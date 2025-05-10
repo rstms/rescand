@@ -539,6 +539,15 @@ func (r *Rescan) importMessages() ([]RescanImportAction, error) {
 		return actions, fmt.Errorf("Import command failed with exit code %d", exitCode)
 	}
 
+	for _, line := range strings.Split(eBuf.String(), "\n") {
+		if strings.HasPrefix(line, "sieve-filter(root)") {
+			fields := strings.Split(line, " ")
+			for i, field := range fields {
+				log.Printf("field[%d] %s\n", i, field)
+			}
+		}
+	}
+
 	return actions, nil
 }
 
