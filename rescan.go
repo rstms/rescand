@@ -145,6 +145,7 @@ type Rescan struct {
 	outDir                string
 	sieveFilter           string
 	sieveScript           string
+	sieveVerbose          bool
 	wg                    sync.WaitGroup
 	verbose               bool
 	verboseDebug          bool
@@ -171,6 +172,7 @@ func setViperDefaults() {
 	viper.SetDefault("subscribe_rescan", true)
 	viper.SetDefault("sieve_filter", "/usr/local/bin/sieve-filter")
 	viper.SetDefault("sieve_script", "/usr/local/lib/dovecot/sieve/new-mail.sieve")
+	viper.SetDefault("sieve_verbose", false)
 	viper.SetDefault("verbose_debug", false)
 	viperDefaultsSet = true
 }
@@ -222,6 +224,7 @@ func NewRescan(request *RescanRequest) (*Rescan, error) {
 		subscribeRescan:       viper.GetBool("subscribe_rescan"),
 		sieveFilter:           viper.GetString("sieve_filter"),
 		sieveScript:           viper.GetString("sieve_script"),
+		sieveVerbose:          viper.GetBool("sieve_verbose"),
 		sleepSeconds:          viper.GetInt64("sleep_seconds"),
 		dovecotDelayMs:        viper.GetInt64("dovecot_delay_ms"),
 		dovecotTickerMs:       viper.GetInt64("dovecot_ticker_ms"),
@@ -507,8 +510,7 @@ func (r *Rescan) importMessages() ([]RescanImportAction, error) {
 	}
 	// /usr/local/bin/sieve-filter -e -W -u ${user} -m ${mailbox} ${sieve_script} ${mailbox}.rescan
 	args := []string{}
-	sieveVerbose := true
-	if sieveVerbose {
+	if r.sieveVerbose {
 		args = append(args, "-v")
 	}
 	args = append(args, []string{"-e", "-W", "-u", r.username, "-m", r.mailBox, r.sieveScript, r.outBox}...)
@@ -527,11 +529,10 @@ func (r *Rescan) importMessages() ([]RescanImportAction, error) {
 	}
 	exitCode := cmd.ProcessState.ExitCode()
 
-	if sieveVerbose {
+	if r.verbose {
 		logLines("sieve-filter-stdout", oBuf.String())
+		logLines("sieve-filter-stderr", eBuf.String())
 	}
-
-	logLines("sieve-filter-stderr", eBuf.String())
 
 	if exitCode != 0 {
 		log.Printf("Error: import command '%s' exited %d\n", cmdLine, exitCode)
