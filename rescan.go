@@ -947,17 +947,6 @@ func (r *Rescan) requestRescan(index int, fromAddr, toAddr, deliveredToAddr, sen
 	if err != nil {
 		return fmt.Errorf("rspamd check request failed: %v", err)
 	}
-
-	if r.moreVerbose {
-
-		for name := range response.Milter.RemoveHeaders {
-			log.Printf("requestRescan[%d] remove: %s\n", index, name)
-		}
-
-		for name, _ := range response.Milter.AddHeaders {
-			log.Printf("requestRescan[%d] add: %s\n", index, name)
-		}
-	}
 	return nil
 }
 
@@ -965,7 +954,12 @@ func (r *Rescan) mungeHeaders(index int, headers *mail.Header, fromAddr, senderI
 
 	// delete headers RSPAM wants to delete
 	for key, _ := range response.Milter.RemoveHeaders {
-		headers.Del(key)
+		if headers.Get(key) != "" {
+			if r.verbose {
+				log.Printf("mungeHeaders[%d] removing: '%s'\n", index, key)
+			}
+			headers.Del(key)
+		}
 	}
 
 	skipAddKeys := map[string]bool{
@@ -978,7 +972,7 @@ func (r *Rescan) mungeHeaders(index int, headers *mail.Header, fromAddr, senderI
 	// copy the headers RSPAMD wants to add
 	for key, value := range response.Milter.AddHeaders {
 		if !skipAddKeys[key] {
-			if r.moreVerbose {
+			if r.verbose {
 				log.Printf("mungeHeaders[%d] adding: '%s': '%s'\n", index, key, value.Value)
 			}
 			if strings.ContainsRune(value.Value, '\n') {
@@ -1020,13 +1014,13 @@ func (r *Rescan) mungeHeaders(index int, headers *mail.Header, fromAddr, senderI
 	spamStatus += "]\r\n"
 	headers.Del("X-Spam-Status")
 	headers.AddRaw([]byte("X-Spam-Status: " + spamStatus))
-	if r.moreVerbose {
+	if r.verbose {
 		log.Printf("mungeHeaders[%d] adding: X-Spam-Status: %s\n", index, spamStatus)
 	}
 
 	spamScore := fmt.Sprintf("%.3f / %.3f", response.Score, response.Required)
 	headers.Set("X-Spam-Score", spamScore)
-	if r.moreVerbose {
+	if r.verbose {
 		log.Printf("mungeHeaders[%d] adding: X-Spam-Score: %s\n", index, spamScore)
 
 	}
@@ -1036,7 +1030,7 @@ func (r *Rescan) mungeHeaders(index int, headers *mail.Header, fromAddr, senderI
 		log.Printf("mungeHeaders[%d] WARNING: senderscore lookup failed: %v", index, err)
 	} else {
 		headers.Set("X-SenderScore", fmt.Sprintf("%d", senderScore))
-		if r.moreVerbose {
+		if r.verbose {
 			log.Printf("mungeHeaders[%d] adding: X-SenderScore: %d\n", index, senderScore)
 		}
 
@@ -1073,6 +1067,9 @@ func (r *Rescan) mungeHeaders(index int, headers *mail.Header, fromAddr, senderI
 	}
 
 	headers.Set("X-Rescanned", "yes")
+	if r.verbose {
+		log.Printf("mungeHeaders[%d] adding: X-Rescanned: yes\n", index)
+	}
 
 	*keys = []string{}
 	fields := headers.Fields()
