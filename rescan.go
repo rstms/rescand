@@ -158,6 +158,8 @@ type Rescan struct {
 	sleepSeconds          int64
 	hostname              string
 	midMap                map[string]int
+	completed             bool
+	completionReported    bool
 }
 
 var jobs sync.Mutex
@@ -188,6 +190,9 @@ func GetRescanStatus(rescanIds *[]string, response *map[string]RescanStatus) err
 		for id, rescan := range RescanJobs {
 			rescan.mutex.Lock()
 			(*response)[id] = rescan.Status.Copy()
+			if rescan.completed {
+				rescan.completionReported = true
+			}
 			rescan.mutex.Unlock()
 		}
 	} else {
@@ -197,6 +202,9 @@ func GetRescanStatus(rescanIds *[]string, response *map[string]RescanStatus) err
 			if ok {
 				rescan.mutex.Lock()
 				(*response)[id] = rescan.Status.Copy()
+				if rescan.completed {
+					rescan.completionReported = true
+				}
 				rescan.mutex.Unlock()
 			} else {
 				(*response)[id] = RescanStatus{}
@@ -429,6 +437,8 @@ func (r *Rescan) Start() {
 		r.Status.Running = false
 		r.doveadm = nil
 		r.filterctl = nil
+		r.completed = true
+		r.completionReported = false
 		r.mutex.Unlock()
 
 		if r.verbose {
@@ -439,11 +449,24 @@ func (r *Rescan) Start() {
 		go func(rescanId string) {
 			pruneSeconds := viper.GetInt64("prune_seconds")
 			if pruneSeconds > 0 {
+				// await enablePrune set
+				log.Printf("Awaiting completion status request: %s\n", rescanId)
+				ticker := time.NewTicker(time.Duration(r.dovecotTickerMs) * time.Millisecond)
+				for reported := false; !reported; {
+					select {
+					case <-ticker.C:
+						r.mutex.Lock()
+						reported = r.completionReported
+						r.mutex.Unlock()
+					}
+				}
+				log.Printf("Status complete reported, beginning prune wait: %s\n", rescanId)
 				<-time.After(time.Duration(pruneSeconds * int64(time.Second)))
-				log.Printf("Pruning completed rescan: %s", rescanId)
+				log.Printf("Pruning completed rescan: %s\n", rescanId)
 				jobs.Lock()
 				delete(RescanJobs, rescanId)
 				jobs.Unlock()
+
 			}
 		}(r.Status.Id)
 
