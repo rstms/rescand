@@ -37,6 +37,7 @@ var Verbose bool
 var Debug bool
 var serverState string
 var serverBanner string
+var ExtensionOrigin string
 
 var validator *Validator
 var filterctl *APIClient
@@ -121,8 +122,17 @@ type ClassesRequest struct {
 	Classes []classes.SpamClass
 }
 
+func addResponseHeaders(w http.ResponseWriter) {
+	header := w.Header()
+	header["Access-Control-Allow-Origin"] = []string{ExtensionOrigin}
+	header["Access-Control-Allow-Methods"] = []string{"GET,POST,DELETE,OPTIONS"}
+	header["Access-Control-Allow-Credentials"] = []string{"true"}
+	header["Access-Control-Allow-Headers"] = []string{"X-Api-Key"}
+}
+
 func fail(w http.ResponseWriter, user, request, message string, status int) {
 	log.Printf("  [%d] %s", status, message)
+	addResponseHeaders(w)
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(Response{User: user, Request: request, Success: false, Message: message})
 }
@@ -138,6 +148,7 @@ func succeed(w http.ResponseWriter, message string, result interface{}) {
 		}
 		log.Println(string(dump))
 	}
+	addResponseHeaders(w)
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(result)
 }
@@ -603,6 +614,8 @@ func initConfig(configFile string) {
 	viper.BindPFlags(pflag.CommandLine)
 	Verbose = viper.GetBool("verbose")
 	Debug = viper.GetBool("debug")
+	viper.SetDefault("exension_origin", "EXTENSION_ORIGIN_REQUIRED")
+	ExtensionOrigin = viper.GetString("extension_origin")
 }
 
 func initRelay() {
