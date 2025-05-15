@@ -456,18 +456,13 @@ func runServer() {
 	serverCertFile := viper.GetString("server_cert")
 	serverKeyFile := viper.GetString("server_key")
 	caFile := viper.GetString("ca")
-	var server http.Server
+	validateClientCerts := false
+	server := http.Server{
+		Addr:        listen,
+		IdleTimeout: 5 * time.Second,
+	}
 
-	if viper.GetBool("insecure") {
-		if !viper.GetBool("debug") {
-			log.Fatalf("insecure flag only allowed in debug mode")
-		}
-		log.Printf("WARNING: client certificate validation disabled\n")
-		server = http.Server{
-			Addr:        listen,
-			IdleTimeout: 5 * time.Second,
-		}
-	} else {
+	if viper.GetBool("require_client_cert") && !viper.GetBool("insecure") {
 		caCert, err := os.ReadFile(caFile)
 		if err != nil {
 			log.Fatalf("failed reading CA file '%s': %v", caFile, err)
@@ -477,16 +472,13 @@ func runServer() {
 		if !ok {
 			log.Fatalf("failed appending CA to cert pool: %v", err)
 		}
-		tlsConfig := &tls.Config{
+		server.TLSConfig = &tls.Config{
 			ClientAuth: tls.RequireAndVerifyClientCert,
 			ClientCAs:  caCertPool,
 		}
-		server = http.Server{
-			Addr:        listen,
-			TLSConfig:   tlsConfig,
-			IdleTimeout: 5 * time.Second,
-		}
+		validateClientCerts = true
 	}
+
 	http.HandleFunc("POST /rescan/", handlePostRescan)
 	http.HandleFunc("GET /rescan/{rescan_id}/", handleGetRescanStatus)
 	http.HandleFunc("GET /rescan/", handleGetAllRescanStatus)
@@ -506,6 +498,10 @@ func runServer() {
 			mode = "debug"
 		}
 		if viper.GetBool("insecure") {
+			if !viper.GetBool("debug") {
+				log.Fatalf("insecure flag only allowed in debug mode")
+			}
+			log.Printf("WARNING: running server with TLS disabled\n")
 			serverState = fmt.Sprintf("listening on %s in %s mode", listen, mode)
 			log.Println(serverState)
 			err := server.ListenAndServe()
@@ -515,12 +511,16 @@ func runServer() {
 		} else {
 			serverState = fmt.Sprintf("listening on %s in TLS %s mode", listen, mode)
 			log.Println(serverState)
+			if !validateClientCerts {
+				log.Printf("WARNING: client certificate validation disabled\n")
+			}
 			err := server.ListenAndServeTLS(serverCertFile, serverKeyFile)
 			if err != nil && err != http.ErrServerClosed {
 				log.Fatalln("ListenAndServeTLS failed: ", err)
 			}
 		}
 	}()
+	initRelay()
 
 	<-shutdown
 
@@ -571,8 +571,6 @@ func main() {
 		}
 	}
 
-	initRelay()
-
 	if viper.GetBool("debug") {
 		go runServer()
 		sigs := make(chan os.Signal, 1)
@@ -601,6 +599,7 @@ func initConfig(configFile string) {
 	viper.SetDefault("hostname", hostname)
 	viper.SetDefault("server_cert", DEFAULT_SERVER_CERT)
 	viper.SetDefault("server_key", DEFAULT_SERVER_KEY)
+	viper.SetDefault("require_client_cert", false)
 	viper.BindPFlags(pflag.CommandLine)
 	Verbose = viper.GetBool("verbose")
 	Debug = viper.GetBool("debug")
