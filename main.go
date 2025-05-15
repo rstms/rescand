@@ -122,6 +122,7 @@ type ClassesRequest struct {
 	Classes []classes.SpamClass
 }
 
+/*
 func addResponseHeaders(w http.ResponseWriter) {
 	header := w.Header()
 	header["Access-Control-Allow-Origin"] = []string{ExtensionOrigin}
@@ -129,10 +130,11 @@ func addResponseHeaders(w http.ResponseWriter) {
 	header["Access-Control-Allow-Credentials"] = []string{"true"}
 	header["Access-Control-Allow-Headers"] = []string{"X-Api-Key"}
 }
+*/
 
 func fail(w http.ResponseWriter, user, request, message string, status int) {
 	log.Printf("  [%d] %s", status, message)
-	addResponseHeaders(w)
+	//addResponseHeaders(w)
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(Response{User: user, Request: request, Success: false, Message: message})
 }
@@ -148,7 +150,7 @@ func succeed(w http.ResponseWriter, message string, result interface{}) {
 		}
 		log.Println(string(dump))
 	}
-	addResponseHeaders(w)
+	//addResponseHeaders(w)
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(result)
 }
