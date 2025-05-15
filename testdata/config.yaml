@@ -2,10 +2,11 @@ cert: ~/ssl/filterctl.pem
 key: ~/ssl/filterctl.key
 ca: /etc/ssl/keymaster.pem
 verbose: true
+more_verbose: true
 debug: false
 
-filterctld_url: https://bitbucket.rstms.net:4443
-mailqueue_hostname: bitbucket.rstms.net
+filterctld_url: https://mailqueue.mailcapsule.io:4443
+mailqueue_hostname: mailqueue.mailcapsule.io
 
 backup_enabled: true
 sleep_seconds: 2
@@ -19,7 +20,7 @@ doveadm_api_key: "Authorization"
 
 test:
   maildir: /home/mkrueger/Maildir
-  email: mkrueger@rstms.net
+  email: mkrueger@mailcapsule.io
   path: "/test"
   maildir_path: ".test"
   dovecot_mailbox: "test"
@@ -28,3 +29,5 @@ test:
   message_id: 174632876925.31481.12243349829304726519@phobos.rstms.net
   flag_test_message_id: 174589534370.82688.14744822461442097425@phobos.rstms.net
   move_test_message_id: 174589534370.82688.14744822461442097425@phobos.rstms.net
+  bookname: test-filterbook
+  address: test@fweep-fweep-fweep.org

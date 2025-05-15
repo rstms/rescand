@@ -106,14 +106,14 @@ func TestDoveadmIsMailboxPresent(t *testing.T) {
 	mailbox := viper.GetString("test.dovecot_mailbox") + ".fnord"
 	present, err := doveadm.IsMailboxPresent(user, mailbox)
 	require.Nil(t, err)
-	require.False(t, present)
 	log.Printf("%v present: %v", mailbox, present)
+	require.False(t, present)
 
-	mailbox = viper.GetString("test.dovecot_mailbox") + ".rescan"
+	mailbox = viper.GetString("test.dovecot_mailbox")
 	present, err = doveadm.IsMailboxPresent(user, mailbox)
 	require.Nil(t, err)
-	require.True(t, present)
 	log.Printf("%v present: %v", mailbox, present)
+	require.True(t, present)
 }
 
 func TestDoveadmIsMessagePresent(t *testing.T) {

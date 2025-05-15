@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/rstms/rspamd-classes/classes"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"io"
@@ -25,6 +26,7 @@ func InitializeTests(t *testing.T) {
 	viper.AutomaticEnv()
 	viper.ReadInConfig()
 	Verbose = viper.GetBool("verbose")
+	initRelay()
 }
 
 func InitializeTestMaildir(t *testing.T) {
@@ -88,11 +90,21 @@ func InitializeTestMaildir(t *testing.T) {
 	require.Nil(t, err)
 }
 
+func callHandler(path string, handler func(http.ResponseWriter, *http.Request), r *http.Request) *http.Response {
+	apiKey := EncodeApiKey(viper.GetString("test_username"), viper.GetString("test_password"))
+	r.Header["X-Api-Key"] = []string{apiKey}
+	mux := http.NewServeMux()
+	mux.HandleFunc(path, handler)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	return w.Result()
+}
+
 func TestMaildirInit(t *testing.T) {
 	InitializeTestMaildir(t)
 }
 
-func parseRescanResponse(t *testing.T, body io.Reader, response interface{}) {
+func parseResponse(t *testing.T, body io.Reader, response interface{}) {
 	decoder := json.NewDecoder(body)
 	err := decoder.Decode(response)
 	if err == nil {
@@ -113,6 +125,12 @@ func dumpStatus(t *testing.T, statusMap *map[string]RescanStatus) {
 	}
 }
 
+func dumpResponse(t *testing.T, response interface{}) {
+	data, err := json.MarshalIndent(response, "", "  ")
+	require.Nil(t, err)
+	fmt.Println(string(data))
+}
+
 func TestRescanOne(t *testing.T) {
 	InitializeTestMaildir(t)
 	messageId := viper.GetString("test.message_id")
@@ -124,12 +142,10 @@ func TestRescanOne(t *testing.T) {
 	data, err := json.Marshal(&request)
 	require.Nil(t, err)
 	req := httptest.NewRequest("POST", "/rescan/", bytes.NewBuffer(data))
-	w := httptest.NewRecorder()
-	handlePostRescan(w, req)
-	result := w.Result()
+	result := callHandler("POST /rescan/", handlePostRescan, req)
 	require.Equal(t, result.StatusCode, http.StatusOK)
 	var response RescanResponse
-	parseRescanResponse(t, result.Body, &response)
+	parseResponse(t, result.Body, &response)
 	dumpStatus(t, &response.Status)
 	require.Equal(t, 1, len(response.Status))
 	var rescanId string
@@ -170,13 +186,12 @@ func TestRescanFolder(t *testing.T) {
 	}
 	data, err := json.Marshal(&request)
 	require.Nil(t, err)
+
 	req := httptest.NewRequest("POST", "/rescan/", bytes.NewBuffer(data))
-	w := httptest.NewRecorder()
-	handlePostRescan(w, req)
-	result := w.Result()
+	result := callHandler("POST /rescan/", handlePostRescan, req)
 	require.Equal(t, result.StatusCode, http.StatusOK)
 	var response RescanResponse
-	parseRescanResponse(t, result.Body, &response)
+	parseResponse(t, result.Body, &response)
 	dumpStatus(t, &response.Status)
 	require.Equal(t, 1, len(response.Status))
 	var rescanId string
@@ -185,4 +200,114 @@ func TestRescanFolder(t *testing.T) {
 	}
 	require.NotEmpty(t, rescanId)
 	monitorRescan(t, rescanId)
+}
+
+func TestGetStatus(t *testing.T) {
+	InitializeTests(t)
+	req := httptest.NewRequest("GET", "/status/", nil)
+	result := callHandler("GET /status/", handleGetServerStatus, req)
+	require.Equal(t, result.StatusCode, http.StatusOK)
+	var response StatusResponse
+	parseResponse(t, result.Body, &response)
+	dumpResponse(t, &response)
+}
+
+func TestGetConfig(t *testing.T) {
+	InitializeTests(t)
+	Verbose = true
+	req := httptest.NewRequest("GET", "/config/", nil)
+	result := callHandler("GET /config/", handleGetConfig, req)
+	require.Equal(t, result.StatusCode, http.StatusOK)
+	var response UserDumpResponse
+	parseResponse(t, result.Body, &response)
+	dumpResponse(t, &response)
+
+}
+
+func TestAddBook(t *testing.T) {
+	InitializeTests(t)
+	var request AddBookRequest
+	request.Bookname = viper.GetString("test.bookname")
+	data, err := json.Marshal(&request)
+	require.Nil(t, err)
+	req := httptest.NewRequest("POST", "/book/", bytes.NewBuffer(data))
+	result := callHandler("POST /book/", handlePostBook, req)
+	require.Equal(t, result.StatusCode, http.StatusOK)
+	var response Response
+	parseResponse(t, result.Body, &response)
+	dumpResponse(t, &response)
+
+}
+
+func TestDeleteBook(t *testing.T) {
+	InitializeTests(t)
+	Verbose = true
+	bookname := viper.GetString("test.bookname")
+	req := httptest.NewRequest("DELETE", fmt.Sprintf("/book/%s/", bookname), nil)
+	result := callHandler("DELETE /book/{book}/", handleDeleteBook, req)
+	require.Equal(t, http.StatusOK, result.StatusCode)
+	var response Response
+	parseResponse(t, result.Body, &response)
+	dumpResponse(t, &response)
+}
+
+func TestAddAddress(t *testing.T) {
+	InitializeTests(t)
+	var request AddAddressRequest
+	request.Bookname = viper.GetString("test.bookname")
+	request.Address = viper.GetString("test.address")
+	data, err := json.Marshal(&request)
+	require.Nil(t, err)
+	req := httptest.NewRequest("POST", "/address/", bytes.NewBuffer(data))
+	result := callHandler("POST /address/", handlePostAddress, req)
+	require.Equal(t, result.StatusCode, http.StatusOK)
+	var response Response
+	parseResponse(t, result.Body, &response)
+	dumpResponse(t, &response)
+
+}
+
+func TestDeleteAddress(t *testing.T) {
+	InitializeTests(t)
+	Verbose = true
+	bookname := viper.GetString("test.bookname")
+	address := viper.GetString("test.address")
+	req := httptest.NewRequest("DELETE", fmt.Sprintf("/address/%s/%s/", bookname, address), nil)
+	result := callHandler("DELETE /address/{book}/{address}/", handleDeleteAddress, req)
+	require.Equal(t, result.StatusCode, http.StatusOK)
+	var response Response
+	parseResponse(t, result.Body, &response)
+	dumpResponse(t, &response)
+}
+
+func TestGetClasses(t *testing.T) {
+	InitializeTests(t)
+	Verbose = true
+	req := httptest.NewRequest("GET", "/classes/", nil)
+	result := callHandler("GET /classes/", handleGetClasses, req)
+	require.Equal(t, result.StatusCode, http.StatusOK)
+	var response ClassesResponse
+	parseResponse(t, result.Body, &response)
+	dumpResponse(t, &response)
+}
+
+func TestSetClasses(t *testing.T) {
+	InitializeTests(t)
+	Verbose = true
+	request := ClassesRequest{
+		Classes: []classes.SpamClass{
+			classes.SpamClass{Name: "ham", Score: float32(0.0)},
+			classes.SpamClass{Name: "possible", Score: float32(3.0)},
+			classes.SpamClass{Name: "probable", Score: float32(10.0)},
+			classes.SpamClass{Name: "spam", Score: float32(999.0)},
+		},
+	}
+	data, err := json.Marshal(&request)
+	require.Nil(t, err)
+	req := httptest.NewRequest("POST", "/classes/", bytes.NewBuffer(data))
+	result := callHandler("POST /classes/", handlePostClasses, req)
+	require.Equal(t, result.StatusCode, http.StatusOK)
+	var response ClassesResponse
+	parseResponse(t, result.Body, &response)
+	dumpResponse(t, &response)
 }

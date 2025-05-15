@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/rstms/go-daemon"
+	"github.com/rstms/rspamd-classes/classes"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"io"
@@ -36,6 +37,9 @@ var Verbose bool
 var Debug bool
 var serverState string
 var serverBanner string
+
+var validator *Validator
+var filterctl *APIClient
 
 var (
 	signalFlag = flag.String("s", "", `send signal:
@@ -74,6 +78,49 @@ type StatusResponse struct {
 	State  string
 }
 
+type UserDump struct {
+	Password string
+	Books    map[string][]string
+}
+
+type UserDumpResponse struct {
+	Response
+	UserDump
+}
+
+type UserBooksResponse struct {
+	Response
+	Books map[string][]string
+}
+
+type UserAccountsResponse struct {
+	Response
+	Accounts map[string]string `json:"accounts"`
+}
+
+type AddBookRequest struct {
+	Username    string `json:"username"`
+	Bookname    string `json:"bookname"`
+	Description string `json:"description"`
+}
+
+type AddAddressRequest struct {
+	Username string `json:"username"`
+	Bookname string `json:"bookname"`
+	Address  string `json:"address"`
+	Name     string `json:"name"`
+}
+
+type ClassesResponse struct {
+	Response
+	Classes []classes.SpamClass
+}
+
+type ClassesRequest struct {
+	Address string
+	Classes []classes.SpamClass
+}
+
 func fail(w http.ResponseWriter, user, request, message string, status int) {
 	log.Printf("  [%d] %s", status, message)
 	w.WriteHeader(status)
@@ -110,6 +157,10 @@ func returnRescanStatus(w http.ResponseWriter, message string, rescanIds *[]stri
 
 func handlePostRescan(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
+	_, ok := checkApiKey(w, r)
+	if !ok {
+		return
+	}
 	var request RescanRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
@@ -136,6 +187,10 @@ func handlePostRescan(w http.ResponseWriter, r *http.Request) {
 
 func handleGetRescanStatus(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
+	_, ok := checkApiKey(w, r)
+	if !ok {
+		return
+	}
 	rescanIds := []string{r.PathValue("rescan_id")}
 	requestString := fmt.Sprintf("get rescan status: %s", rescanIds[0])
 	if Verbose {
@@ -148,6 +203,10 @@ func handleGetRescanStatus(w http.ResponseWriter, r *http.Request) {
 
 func handleGetAllRescanStatus(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
+	_, ok := checkApiKey(w, r)
+	if !ok {
+		return
+	}
 	requestString := "get rescan status: all"
 	if Verbose {
 		log.Println(requestString)
@@ -159,6 +218,10 @@ func handleGetAllRescanStatus(w http.ResponseWriter, r *http.Request) {
 
 func handleDeleteRescan(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
+	_, ok := checkApiKey(w, r)
+	if !ok {
+		return
+	}
 	rescanId := r.PathValue("rescan_id")
 	requestString := fmt.Sprintf("delete rescan: %s", rescanId)
 	if Verbose {
@@ -203,6 +266,179 @@ func handleGetServerStatus(w http.ResponseWriter, r *http.Request) {
 	succeed(w, response.Message, &response)
 	return
 
+}
+
+func checkApiKey(w http.ResponseWriter, r *http.Request) (string, bool) {
+	apiKey := r.Header["X-Api-Key"]
+	if len(apiKey) != 1 || apiKey[0] == "" {
+		fail(w, "system", "rescand", "API Key failure", 400)
+		return "", false
+	}
+	username, err := validator.check(apiKey[0])
+	if err != nil {
+		fail(w, "system", "rescand", fmt.Sprintf("%v", err), 400)
+		return "", false
+	}
+	return username, true
+}
+
+func handleGetConfig(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	username, ok := checkApiKey(w, r)
+	if !ok {
+		return
+	}
+	requestString := fmt.Sprintf("get user config: %s", username)
+	if Verbose {
+		log.Println(requestString)
+	}
+	var response UserDumpResponse
+	_, err := filterctl.Get(fmt.Sprintf("/filterctl/dump/%s/", username), &response)
+	if err != nil {
+		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
+		return
+	}
+	succeed(w, response.Message, &response)
+}
+
+func handleGetClasses(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	username, ok := checkApiKey(w, r)
+	if !ok {
+		return
+	}
+	requestString := fmt.Sprintf("get user classes: %s", username)
+	if Verbose {
+		log.Println(requestString)
+	}
+	var response ClassesResponse
+	_, err := filterctl.Get(fmt.Sprintf("/filterctl/classes/%s/", username), &response)
+	if err != nil {
+		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
+		return
+	}
+	succeed(w, response.Message, &response)
+}
+
+func handlePostClasses(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	username, ok := checkApiKey(w, r)
+	if !ok {
+		return
+	}
+	var request ClassesRequest
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		fail(w, "system", "rescan", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
+		return
+	}
+	request.Address = username
+	requestString := fmt.Sprintf("set classes %s", request.Address)
+	if Verbose {
+		log.Printf("set classes: %+v\n", request)
+	}
+
+	var response ClassesResponse
+	_, err = filterctl.Post(fmt.Sprintf("/filterctl/classes/%s/", username), &request, &response, nil)
+	if err != nil {
+		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
+		return
+	}
+	succeed(w, response.Message, &response)
+}
+
+func handlePostBook(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	username, ok := checkApiKey(w, r)
+	if !ok {
+		return
+	}
+	var request AddBookRequest
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		fail(w, "system", "rescan", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
+		return
+	}
+	request.Username = username
+	requestString := fmt.Sprintf("add book %s %s", request.Username, request.Bookname)
+	if Verbose {
+		log.Printf("add address: %+v\n", request)
+	}
+
+	var response Response
+	_, err = filterctl.Post("/filterctl/book/", &request, &response, nil)
+	if err != nil {
+		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
+		return
+	}
+	succeed(w, response.Message, &response)
+}
+
+func handleDeleteBook(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	username, ok := checkApiKey(w, r)
+	if !ok {
+		return
+	}
+	bookname := r.PathValue("book")
+	requestString := fmt.Sprintf("delete book %s %s", username, bookname)
+	if Verbose {
+		log.Println(requestString)
+	}
+	var response Response
+	_, err := filterctl.Delete(fmt.Sprintf("/filterctl/book/%s/%s/", username, bookname), &response)
+	if err != nil {
+		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
+		return
+	}
+	succeed(w, response.Message, &response)
+}
+
+func handlePostAddress(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	username, ok := checkApiKey(w, r)
+	if !ok {
+		return
+	}
+	var request AddAddressRequest
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		fail(w, "system", "rescan", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
+		return
+	}
+	request.Username = username
+	requestString := fmt.Sprintf("add address %s %s %s", request.Username, request.Bookname, request.Address)
+	if Verbose {
+		log.Printf("add address: %+v\n", request)
+	}
+	var response Response
+	_, err = filterctl.Post("/filterctl/address/", &request, &response, nil)
+	if err != nil {
+		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
+		return
+	}
+	succeed(w, response.Message, &response)
+}
+
+func handleDeleteAddress(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	username, ok := checkApiKey(w, r)
+	if !ok {
+		return
+	}
+	bookname := r.PathValue("book")
+	address := r.PathValue("address")
+	requestString := fmt.Sprintf("delete address %s %s %s", username, bookname, address)
+	if Verbose {
+		log.Println(requestString)
+	}
+	var response Response
+	_, err := filterctl.Delete(fmt.Sprintf("/filterctl/address/%s/%s/%s/", username, bookname, address), &response)
+	if err != nil {
+		fail(w, username, requestString, fmt.Sprintf("%v", err), 400)
+		return
+	}
+	succeed(w, response.Message, &response)
 }
 
 func runServer() {
@@ -256,6 +492,13 @@ func runServer() {
 	http.HandleFunc("GET /rescan/", handleGetAllRescanStatus)
 	http.HandleFunc("DELETE /rescan/{rescan_id}/", handleDeleteRescan)
 	http.HandleFunc("GET /status/", handleGetServerStatus)
+	http.HandleFunc("POST /book/", handlePostBook)
+	http.HandleFunc("DELETE /book/{book}/", handleDeleteBook)
+	http.HandleFunc("POST /address/", handlePostAddress)
+	http.HandleFunc("DELETE /address/{book}/{address}/", handleDeleteAddress)
+	http.HandleFunc("GET /config/", handleGetConfig)
+	http.HandleFunc("GET /classes/", handleGetClasses)
+	http.HandleFunc("POST /classes/", handlePostClasses)
 
 	go func() {
 		mode := "daemon"
@@ -315,7 +558,6 @@ func main() {
 	pflag.StringVarP(&configFilename, "config", "c", DEFAULT_CONFIG_FILE, fmt.Sprintf("config file (default: %s)", DEFAULT_CONFIG_FILE))
 	pflag.Parse()
 	initConfig(configFilename)
-
 	for _, command := range pflag.Args() {
 		switch command {
 		case "version":
@@ -328,6 +570,8 @@ func main() {
 			log.Fatalf("unknown command: '%s'\n", command)
 		}
 	}
+
+	initRelay()
 
 	if viper.GetBool("debug") {
 		go runServer()
@@ -360,6 +604,18 @@ func initConfig(configFile string) {
 	viper.BindPFlags(pflag.CommandLine)
 	Verbose = viper.GetBool("verbose")
 	Debug = viper.GetBool("debug")
+}
+
+func initRelay() {
+	var err error
+	filterctl, err = NewFilterctlClient()
+	if err != nil {
+		log.Fatalf("failed creating filterctl client: %v", err)
+	}
+	validator, err = NewValidator(filterctl)
+	if err != nil {
+		log.Fatalf("failed creating validator: %v", err)
+	}
 }
 
 func showConfig() {

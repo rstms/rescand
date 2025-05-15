@@ -72,6 +72,7 @@ func (c *DoveadmClient) makeRequest(command string, args *map[string]interface{}
 
 func (c *DoveadmClient) getCommands() (string, error) {
 	response := make([]interface{}, 0)
+	c.api.verbose = true
 	text, err := c.api.Get("/doveadm/v1", &response)
 	if err != nil {
 		return "", fmt.Errorf("doveadm Post failed: %v", err)

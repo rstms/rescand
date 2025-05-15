@@ -1059,7 +1059,7 @@ func (r *Rescan) mungeHeaders(index int, headers *mail.Header, fromAddr, senderI
 
 	books, err := r.filterctl.ScanAddressBooks(r.Status.Request.Username, fromAddr)
 	if err != nil {
-		log.Printf("mungeHeaders[%d] WARNING: ScanAddressBooks: %v\n", err)
+		log.Printf("mungeHeaders[%d] WARNING: ScanAddressBooks: %v\n", index, err)
 		headers.Del("X-Address-Book")
 	} else {
 		addressBookValue := strings.Join(books, ",")

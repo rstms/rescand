@@ -182,11 +182,13 @@ func (a *APIClient) request(method, path string, requestData, responseData inter
 	if err != nil {
 		return "", fmt.Errorf("failure reading response body: %v", err)
 	}
-	if response.StatusCode < 200 && response.StatusCode > 299 {
-		return "", fmt.Errorf("API returned status [%d] %s", response.StatusCode, response.Status)
-	}
 	if a.verbose {
-		log.Printf("--> (%d bytes)\n", len(body))
+		log.Printf("--> '%s' (%d bytes)\n", response.Status, len(body))
+		if a.moreVerbose {
+			log.Println("BEGIN-RESPONSE-BODY")
+			log.Println(string(body))
+			log.Println("END-RESPONSE-BODY")
+		}
 	}
 	err = json.Unmarshal(body, responseData)
 	if err != nil {
@@ -195,19 +197,15 @@ func (a *APIClient) request(method, path string, requestData, responseData inter
 	if err != nil {
 		return "", err
 	}
-	var text []byte
 	if a.verbose {
+		var text []byte
 		text, err = json.MarshalIndent(responseData, "", "  ")
 		if err != nil {
 			return "", fmt.Errorf("failed formatting JSON response: %v", err)
 		}
-		if a.moreVerbose {
-			log.Println("BEGIN-RESPONSE-BODY")
-			log.Println(string(text))
-			log.Println("END-RESPONSE-BODY")
-		}
+		return string(text), nil
 	}
-	return string(text), nil
+	return "", nil
 }
 
 func (a *APIClient) ScanAddressBooks(username, address string) ([]string, error) {

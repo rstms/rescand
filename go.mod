@@ -8,9 +8,11 @@ require (
 	github.com/emersion/go-message v0.18.2
 	github.com/google/uuid v1.4.0
 	github.com/rstms/go-daemon v0.1.7
+	github.com/rstms/rspamd-classes v1.0.2
 	github.com/spf13/pflag v1.0.6
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
+	golang.org/x/crypto v0.21.0
 )
 
 require (
