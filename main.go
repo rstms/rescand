@@ -37,7 +37,6 @@ var Verbose bool
 var Debug bool
 var serverState string
 var serverBanner string
-var ExtensionOrigin string
 
 var validator *Validator
 var filterctl *APIClient
@@ -52,20 +51,20 @@ var (
 )
 
 type Response struct {
-	Success bool   `json:"success"`
-	User    string `json:"user"`
-	Message string `json:"message"`
-	Request string `json:"request"`
+	Success bool   `json:"Success"`
+	User    string `json:"User"`
+	Message string `json:"Message"`
+	Request string `json:"Request"`
 }
 
 type ClassResponse struct {
 	Response
-	Class string
+	Class string `json:"Class"`
 }
 
 type ScanResponse struct {
 	Response
-	Books []string
+	Books []string `json:"Books"`
 }
 
 type RescanResponse struct {
@@ -79,14 +78,11 @@ type StatusResponse struct {
 	State  string
 }
 
-type UserDump struct {
-	Password string
-	Books    map[string][]string
-}
-
 type UserDumpResponse struct {
 	Response
-	UserDump
+	Password string              `json:"Password"`
+	Classes  []classes.SpamClass `json:"Classes"`
+	Books    map[string][]string `json:"Books"`
 }
 
 type UserBooksResponse struct {
@@ -96,20 +92,20 @@ type UserBooksResponse struct {
 
 type UserAccountsResponse struct {
 	Response
-	Accounts map[string]string `json:"accounts"`
+	Accounts map[string]string
 }
 
 type AddBookRequest struct {
-	Username    string `json:"username"`
-	Bookname    string `json:"bookname"`
-	Description string `json:"description"`
+	Username    string
+	Bookname    string
+	Description string
 }
 
 type AddAddressRequest struct {
-	Username string `json:"username"`
-	Bookname string `json:"bookname"`
-	Address  string `json:"address"`
-	Name     string `json:"name"`
+	Username string
+	Bookname string
+	Address  string
+	Name     string
 }
 
 type ClassesResponse struct {
@@ -122,19 +118,8 @@ type ClassesRequest struct {
 	Classes []classes.SpamClass
 }
 
-/*
-func addResponseHeaders(w http.ResponseWriter) {
-	header := w.Header()
-	header["Access-Control-Allow-Origin"] = []string{ExtensionOrigin}
-	header["Access-Control-Allow-Methods"] = []string{"GET,POST,DELETE,OPTIONS"}
-	header["Access-Control-Allow-Credentials"] = []string{"true"}
-	header["Access-Control-Allow-Headers"] = []string{"X-Api-Key"}
-}
-*/
-
 func fail(w http.ResponseWriter, user, request, message string, status int) {
 	log.Printf("  [%d] %s", status, message)
-	//addResponseHeaders(w)
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(Response{User: user, Request: request, Success: false, Message: message})
 }
@@ -150,7 +135,6 @@ func succeed(w http.ResponseWriter, message string, result interface{}) {
 		}
 		log.Println(string(dump))
 	}
-	//addResponseHeaders(w)
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(result)
 }
@@ -295,13 +279,13 @@ func checkApiKey(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return username, true
 }
 
-func handleGetConfig(w http.ResponseWriter, r *http.Request) {
+func handleGetUserDump(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	username, ok := checkApiKey(w, r)
 	if !ok {
 		return
 	}
-	requestString := fmt.Sprintf("get user config: %s", username)
+	requestString := fmt.Sprintf("userdump: %s", username)
 	if Verbose {
 		log.Println(requestString)
 	}
@@ -311,6 +295,14 @@ func handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
 		return
 	}
+
+	var classesResponse ClassesResponse
+	_, err = filterctl.Get(fmt.Sprintf("/filterctl/classes/%s/", username), &classesResponse)
+	if err != nil {
+		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
+		return
+	}
+	response.Classes = classesResponse.Classes
 	succeed(w, response.Message, &response)
 }
 
@@ -501,7 +493,7 @@ func runServer() {
 	http.HandleFunc("DELETE /book/{book}/", handleDeleteBook)
 	http.HandleFunc("POST /address/", handlePostAddress)
 	http.HandleFunc("DELETE /address/{book}/{address}/", handleDeleteAddress)
-	http.HandleFunc("GET /config/", handleGetConfig)
+	http.HandleFunc("GET /userdump/", handleGetUserDump)
 	http.HandleFunc("GET /classes/", handleGetClasses)
 	http.HandleFunc("POST /classes/", handlePostClasses)
 
@@ -616,8 +608,6 @@ func initConfig(configFile string) {
 	viper.BindPFlags(pflag.CommandLine)
 	Verbose = viper.GetBool("verbose")
 	Debug = viper.GetBool("debug")
-	viper.SetDefault("exension_origin", "EXTENSION_ORIGIN_REQUIRED")
-	ExtensionOrigin = viper.GetString("extension_origin")
 }
 
 func initRelay() {
