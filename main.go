@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -409,7 +410,6 @@ func handleDeleteBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.Request = requestId(r)
-	response.Message = "address book added"
 	succeed(w, response.Message, &response)
 }
 
@@ -431,10 +431,33 @@ func handlePostAddress(w http.ResponseWriter, r *http.Request) {
 		log.Printf("add address: %+v\n", request)
 	}
 	var response Response
-	_, err = filterctl.Post("/filterctl/address/", &request, &response, nil)
-	if err != nil {
-		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
-		return
+	addBookAttempted := false
+	for {
+		_, err = filterctl.Post("/filterctl/address/", &request, &response, nil)
+		if err != nil {
+			fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
+			return
+		}
+		if response.Success || addBookAttempted {
+			break
+		}
+		if strings.HasPrefix(response.Message, "api.AddAddress failed: 404 Not Found") {
+			addBookAttempted = true
+			log.Printf("address book not found; adding '%s'\n", request.Bookname)
+			addBookRequest := AddBookRequest{Username: username, Bookname: request.Bookname, Description: request.Bookname}
+			_, err = filterctl.Post("/filterctl/book/", &addBookRequest, &response, nil)
+			if err != nil {
+				fail(w, username, requestString, fmt.Sprintf("adding address book: %v", err), 500)
+				return
+			}
+			if !response.Success {
+				fail(w, username, requestString, fmt.Sprintf("failed adding address book: %s", response.Message), 500)
+				return
+			}
+		} else {
+			// add address was unsuccessful but the message does not indicate book not found
+			break
+		}
 	}
 	response.Request = requestId(r)
 	succeed(w, response.Message, &response)
