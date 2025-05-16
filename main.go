@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/rstms/go-daemon"
 	"github.com/rstms/rspamd-classes/classes"
 	"github.com/spf13/pflag"
@@ -177,8 +178,8 @@ func handlePostRescan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var response RescanResponse
-	response.Request = requestString
 	rescanIds := []string{rescan.Status.Id}
+	response.Request = requestId(r)
 	returnRescanStatus(w, "rescan started", &rescanIds, &response)
 }
 
@@ -194,7 +195,7 @@ func handleGetRescanStatus(w http.ResponseWriter, r *http.Request) {
 		log.Println(requestString)
 	}
 	var response RescanResponse
-	response.Request = requestString
+	response.Request = requestId(r)
 	returnRescanStatus(w, "rescan status", &rescanIds, &response)
 }
 
@@ -209,7 +210,7 @@ func handleGetAllRescanStatus(w http.ResponseWriter, r *http.Request) {
 		log.Println(requestString)
 	}
 	var response RescanResponse
-	response.Request = requestString
+	response.Request = requestId(r)
 	returnRescanStatus(w, "rescan status", nil, &response)
 }
 
@@ -226,7 +227,6 @@ func handleDeleteRescan(w http.ResponseWriter, r *http.Request) {
 	}
 	var response Response
 	response.User = "rescand"
-	response.Request = requestString
 	response.Success = false
 	found, err := DeleteRescan(rescanId)
 	if err != nil {
@@ -237,12 +237,12 @@ func handleDeleteRescan(w http.ResponseWriter, r *http.Request) {
 	} else {
 		response.Message = "not found"
 	}
+	response.Request = requestId(r)
 	succeed(w, response.Message, &response)
 }
 
 func handleGetServerStatus(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	requestString := "status request"
 
 	if Verbose {
 		log.Printf("Status request\n")
@@ -254,7 +254,7 @@ func handleGetServerStatus(w http.ResponseWriter, r *http.Request) {
 	response.Message = "status: running"
 	response.Banner = serverBanner
 	response.State = serverState
-	response.Request = requestString
+	response.Request = requestId(r)
 
 	if Verbose {
 		log.Printf("response: %v\n", response)
@@ -277,6 +277,14 @@ func checkApiKey(w http.ResponseWriter, r *http.Request) (string, bool) {
 		return "", false
 	}
 	return username, true
+}
+
+func requestId(r *http.Request) string {
+	id := r.Header["X-Request-Id"]
+	if len(id) > 0 && id[0] != "" {
+		return id[0]
+	}
+	return uuid.New().String()
 }
 
 func handleGetUserDump(w http.ResponseWriter, r *http.Request) {
@@ -303,6 +311,7 @@ func handleGetUserDump(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.Classes = classesResponse.Classes
+	response.Request = requestId(r)
 	succeed(w, response.Message, &response)
 }
 
@@ -322,6 +331,7 @@ func handleGetClasses(w http.ResponseWriter, r *http.Request) {
 		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
 		return
 	}
+	response.Request = requestId(r)
 	succeed(w, response.Message, &response)
 }
 
@@ -334,7 +344,7 @@ func handlePostClasses(w http.ResponseWriter, r *http.Request) {
 	var request ClassesRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		fail(w, "system", "rescan", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
+		fail(w, "system", "rescand", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
 		return
 	}
 	request.Address = username
@@ -349,6 +359,7 @@ func handlePostClasses(w http.ResponseWriter, r *http.Request) {
 		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
 		return
 	}
+	response.Request = requestId(r)
 	succeed(w, response.Message, &response)
 }
 
@@ -361,7 +372,7 @@ func handlePostBook(w http.ResponseWriter, r *http.Request) {
 	var request AddBookRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		fail(w, "system", "rescan", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
+		fail(w, "system", "rescand", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
 		return
 	}
 	request.Username = username
@@ -376,6 +387,7 @@ func handlePostBook(w http.ResponseWriter, r *http.Request) {
 		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
 		return
 	}
+	response.Request = requestId(r)
 	succeed(w, response.Message, &response)
 }
 
@@ -396,6 +408,8 @@ func handleDeleteBook(w http.ResponseWriter, r *http.Request) {
 		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
 		return
 	}
+	response.Request = requestId(r)
+	response.Message = "address book added"
 	succeed(w, response.Message, &response)
 }
 
@@ -408,7 +422,7 @@ func handlePostAddress(w http.ResponseWriter, r *http.Request) {
 	var request AddAddressRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		fail(w, "system", "rescan", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
+		fail(w, "system", "rescand", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
 		return
 	}
 	request.Username = username
@@ -422,6 +436,7 @@ func handlePostAddress(w http.ResponseWriter, r *http.Request) {
 		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
 		return
 	}
+	response.Request = requestId(r)
 	succeed(w, response.Message, &response)
 }
 
@@ -443,6 +458,7 @@ func handleDeleteAddress(w http.ResponseWriter, r *http.Request) {
 		fail(w, username, requestString, fmt.Sprintf("%v", err), 400)
 		return
 	}
+	response.Request = requestId(r)
 	succeed(w, response.Message, &response)
 }
 
