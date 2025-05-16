@@ -378,7 +378,7 @@ func handlePostBook(w http.ResponseWriter, r *http.Request) {
 	request.Username = username
 	requestString := fmt.Sprintf("add book %s %s", request.Username, request.Bookname)
 	if Verbose {
-		log.Printf("add address: %+v\n", request)
+		log.Printf("add book: %+v\n", request)
 	}
 
 	var response Response
