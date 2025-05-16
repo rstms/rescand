@@ -212,11 +212,11 @@ func TestGetStatus(t *testing.T) {
 	dumpResponse(t, &response)
 }
 
-func TestGetConfig(t *testing.T) {
+func TestGetUserDump(t *testing.T) {
 	InitializeTests(t)
 	Verbose = true
-	req := httptest.NewRequest("GET", "/config/", nil)
-	result := callHandler("GET /config/", handleGetConfig, req)
+	req := httptest.NewRequest("GET", "/userdump/", nil)
+	result := callHandler("GET /userdump/", handleGetUserDump, req)
 	require.Equal(t, result.StatusCode, http.StatusOK)
 	var response UserDumpResponse
 	parseResponse(t, result.Body, &response)
