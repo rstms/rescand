@@ -1,8 +1,8 @@
 cert: ~/ssl/filterctl.pem
 key: ~/ssl/filterctl.key
 ca: /etc/ssl/keymaster.pem
-verbose: true
-more_verbose: true
+verbose: false
+more_verbose: false
 debug: false
 
 filterctld_url: https://mailqueue.mailcapsule.io:4443

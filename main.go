@@ -17,6 +17,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"os/user"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -118,6 +121,11 @@ type ClassesResponse struct {
 type ClassesRequest struct {
 	Address string
 	Classes []classes.SpamClass
+}
+
+type SieveTraceResponse struct {
+	Response
+	Enabled bool
 }
 
 func fail(w http.ResponseWriter, user, request, message string, status int) {
@@ -485,6 +493,133 @@ func handleDeleteAddress(w http.ResponseWriter, r *http.Request) {
 	succeed(w, response.Message, &response)
 }
 
+func usernamePart(address string) string {
+	username, _, _ := strings.Cut(address, "@")
+	return username
+}
+
+func handleGetSieveTrace(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	address, ok := checkApiKey(w, r)
+	if !ok {
+		return
+	}
+	username := usernamePart(address)
+	requestString := fmt.Sprintf("get sieve_trace: %s", address)
+	if Verbose {
+		log.Println(requestString)
+	}
+	homeDir := filepath.Join("/home", username)
+	if !IsDir(homeDir) {
+		fail(w, username, requestString, fmt.Sprintf("unknown user: %s", username), 404)
+		return
+	}
+	traceDir := filepath.Join(homeDir, "sieve_trace")
+	var response SieveTraceResponse
+	response.Success = true
+	response.User = address
+	if IsDir(traceDir) {
+		response.Enabled = true
+		response.Message = "sieve_trace enabled"
+	} else {
+		response.Enabled = false
+		response.Message = "sieve_trace disabled"
+	}
+	response.Request = requestId(r)
+	succeed(w, response.Message, &response)
+}
+
+func handlePutSieveTrace(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	address, ok := checkApiKey(w, r)
+	if !ok {
+		return
+	}
+	username := usernamePart(address)
+	requestString := fmt.Sprintf("enable sieve_trace: %s", address)
+	if Verbose {
+		log.Println(requestString)
+	}
+	traceDir := filepath.Join("/home", username, "sieve_trace")
+	err := os.Mkdir(traceDir, 0700)
+	if err != nil {
+		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
+		return
+	}
+	u, err := user.Lookup(username)
+	if err != nil {
+		fail(w, username, requestString, fmt.Sprintf("unknown user: %s", username), 404)
+		return
+	}
+	uid, err := strconv.Atoi(u.Uid)
+	if err != nil {
+		fail(w, username, requestString, fmt.Sprintf("uid conversion failed: %v", err), 500)
+		return
+	}
+	gid, err := strconv.Atoi(u.Gid)
+	if err != nil {
+		fail(w, username, requestString, fmt.Sprintf("gid conversion failed: %v", err), 500)
+		return
+	}
+	err = os.Chown(traceDir, uid, gid)
+	if err != nil {
+		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
+		return
+	}
+	var response SieveTraceResponse
+	response.User = address
+	response.Success = true
+	response.Request = requestId(r)
+	response.Message = "sieve_trace enabled"
+	response.Enabled = true
+	succeed(w, response.Message, &response)
+}
+
+func handleDeleteSieveTrace(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	address, ok := checkApiKey(w, r)
+	if !ok {
+		return
+	}
+	username := usernamePart(address)
+	requestString := fmt.Sprintf("disable sieve_trace: %s", address)
+	if username != usernamePart(address) {
+		fail(w, username, requestString, fmt.Sprintf("username mismatch: %s", username), 400)
+		return
+	}
+	if Verbose {
+		log.Println(requestString)
+	}
+	homeDir := filepath.Join("/home", username)
+	if !IsDir(homeDir) {
+		fail(w, username, requestString, fmt.Sprintf("unknown user: %s", username), 404)
+		return
+	}
+	traceDir := filepath.Join(homeDir, "sieve_trace")
+	if IsDir(traceDir) {
+		err := os.RemoveAll(traceDir)
+		if err != nil {
+			fail(w, username, requestString, fmt.Sprintf("failed removing trace dir: %v", err), 500)
+			return
+		}
+	}
+	var response SieveTraceResponse
+	response.User = address
+	response.Success = true
+	response.Request = requestId(r)
+	response.Message = "sieve_trace disabled"
+	response.Enabled = false
+	succeed(w, response.Message, &response)
+}
+
+func IsDir(path string) bool {
+	stat, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return stat.IsDir()
+}
+
 func runServer() {
 
 	serverBanner = fmt.Sprintf("%s v%s uid=%d gid=%d started as PID %d", serverName, Version, os.Getuid(), os.Getgid(), os.Getpid())
@@ -535,6 +670,9 @@ func runServer() {
 	http.HandleFunc("GET /userdump/", handleGetUserDump)
 	http.HandleFunc("GET /classes/", handleGetClasses)
 	http.HandleFunc("POST /classes/", handlePostClasses)
+	http.HandleFunc("GET /sieve/trace/", handleGetSieveTrace)
+	http.HandleFunc("PUT /sieve/trace/", handlePutSieveTrace)
+	http.HandleFunc("DELETE /sieve/trace/", handleDeleteSieveTrace)
 
 	go func() {
 		mode := "daemon"

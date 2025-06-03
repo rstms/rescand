@@ -311,3 +311,33 @@ func TestSetClasses(t *testing.T) {
 	parseResponse(t, result.Body, &response)
 	dumpResponse(t, &response)
 }
+
+func TestGetSieveTrace(t *testing.T) {
+	InitializeTests(t)
+	req := httptest.NewRequest("GET", "/sieve/trace/", nil)
+	result := callHandler("GET /sieve/trace/", handleGetSieveTrace, req)
+	require.Equal(t, result.StatusCode, http.StatusOK)
+	var response Response
+	parseResponse(t, result.Body, &response)
+	dumpResponse(t, &response)
+}
+
+func TestPutSieveTrace(t *testing.T) {
+	InitializeTests(t)
+	req := httptest.NewRequest("PUT", "/sieve/trace/", nil)
+	result := callHandler("PUT /sieve/trace/", handlePutSieveTrace, req)
+	require.Equal(t, result.StatusCode, http.StatusOK)
+	var response Response
+	parseResponse(t, result.Body, &response)
+	dumpResponse(t, &response)
+}
+
+func TestDeleteSieveTrace(t *testing.T) {
+	InitializeTests(t)
+	req := httptest.NewRequest("DELETE", "/sieve/trace/", nil)
+	result := callHandler("DELETE /sieve/trace/", handleDeleteSieveTrace, req)
+	require.Equal(t, result.StatusCode, http.StatusOK)
+	var response Response
+	parseResponse(t, result.Body, &response)
+	dumpResponse(t, &response)
+}
