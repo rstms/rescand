@@ -540,11 +540,18 @@ func handlePutSieveTrace(w http.ResponseWriter, r *http.Request) {
 	if Verbose {
 		log.Println(requestString)
 	}
-	traceDir := filepath.Join("/home", username, "sieve_trace")
-	err := os.Mkdir(traceDir, 0700)
-	if err != nil {
+	homeDir := filepath.Join("/home", username)
+	if !IsDir(homeDir) {
+		fail(w, username, requestString, fmt.Sprintf("unknown user: %s", username), 404)
+		return
+	}
+	traceDir := filepath.Join(homeDir, "sieve_trace")
+	if ! IsDir(traceDir) {
+	    err := os.Mkdir(traceDir, 0700)
+	    if err != nil {
 		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
 		return
+	    }
 	}
 	u, err := user.Lookup(username)
 	if err != nil {
