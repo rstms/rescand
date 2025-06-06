@@ -67,20 +67,20 @@ func (v *Validator) validate(apiKey string) (string, error) {
 	if !viper.GetBool("validate_system_accounts") {
 		return v.checkFilterctl(apiKey)
 	}
-	username, password, err := DecodeApiKey(apiKey)
+	emailAddress, password, err := DecodeApiKey(apiKey)
 	if err != nil {
 		return "", err
 	}
-	username, _, _ = strings.Cut(username, "@")
+	username, _, _ := strings.Cut(emailAddress, "@")
 	hash, ok := v.systemPasswd[username]
 	if !ok {
-		return "", fmt.Errorf("unknown username: %s", username)
+		return "", fmt.Errorf("unknown system username: %s", username)
 	}
 	err = bcrypt.CompareHashAndPassword(hash, []byte(password))
 	if err != nil {
-		return "", fmt.Errorf("validation failed: %v", err)
+		return "", fmt.Errorf("system validation failure: %v", err)
 	}
-	return username, nil
+	return emailAddress, nil
 }
 
 func (v *Validator) checkFilterctl(apiKey string) (string, error) {
@@ -90,11 +90,11 @@ func (v *Validator) checkFilterctl(apiKey string) (string, error) {
 	}
 	hash, ok := v.filterctlPasswd[username]
 	if !ok {
-		return "", fmt.Errorf("unknown username: %s", username)
+		return "", fmt.Errorf("unknown filterctl username: %s", username)
 	}
 	err = bcrypt.CompareHashAndPassword(hash, []byte(password))
 	if err != nil {
-		return "", fmt.Errorf("validation failure: %v\n", err)
+		return "", fmt.Errorf("filterctl validation failure: %v\n", err)
 	}
 	return username, nil
 }
