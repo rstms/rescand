@@ -91,7 +91,9 @@ func InitializeTestMaildir(t *testing.T) {
 }
 
 func callHandler(path string, handler func(http.ResponseWriter, *http.Request), r *http.Request) *http.Response {
-	apiKey := EncodeApiKey(viper.GetString("test_username"), viper.GetString("test_password"))
+	username := os.Getenv("TEST_USERNAME")
+	password := os.Getenv("TEST_PASSWORD")
+	apiKey := EncodeApiKey(username, password)
 	r.Header["X-Api-Key"] = []string{apiKey}
 	mux := http.NewServeMux()
 	mux.HandleFunc(path, handler)

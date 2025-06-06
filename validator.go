@@ -3,12 +3,15 @@ package main
 import (
 	"encoding/base64"
 	"fmt"
+	"github.com/spf13/viper"
 	"golang.org/x/crypto/bcrypt"
+	"os"
 	"strings"
 )
 
 type Validator struct {
-	passwd map[string][]byte
+	filterctlPasswd map[string][]byte
+	systemPasswd    map[string][]byte
 }
 
 func EncodeApiKey(username, password string) string {
@@ -30,9 +33,10 @@ func DecodeApiKey(apiKey string) (string, string, error) {
 	return username, password, nil
 }
 
-func NewValidator(filterctl *APIClient) (*Validator, error) {
+func NewValidator(filterctl *APIClient, passwdFilename string) (*Validator, error) {
 	validator := Validator{
-		passwd: make(map[string][]byte),
+		filterctlPasswd: make(map[string][]byte),
+		systemPasswd:    make(map[string][]byte),
 	}
 	var response UserAccountsResponse
 	_, err := filterctl.Get("/filterctl/accounts/", &response)
@@ -42,15 +46,49 @@ func NewValidator(filterctl *APIClient) (*Validator, error) {
 	for username, password := range response.Accounts {
 		validator.add(username, password)
 	}
+
+	data, err := os.ReadFile(passwdFilename)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		fields := strings.Split(line, ":")
+		if len(fields) > 8 {
+			if strings.HasPrefix(fields[8], "/home/") {
+				validator.systemPasswd[fields[0]] = []byte(fields[1])
+			}
+		}
+	}
 	return &validator, nil
 }
 
-func (v *Validator) check(apiKey string) (string, error) {
+func (v *Validator) validate(apiKey string) (string, error) {
+	if !viper.GetBool("validate_system_accounts") {
+		return v.checkFilterctl(apiKey)
+	}
 	username, password, err := DecodeApiKey(apiKey)
 	if err != nil {
 		return "", err
 	}
-	hash, ok := v.passwd[username]
+	username, _, _ = strings.Cut(username, "@")
+	hash, ok := v.systemPasswd[username]
+	if !ok {
+		return "", fmt.Errorf("unknown username: %s", username)
+	}
+	err = bcrypt.CompareHashAndPassword(hash, []byte(password))
+	if err != nil {
+		return "", fmt.Errorf("validation failed: %v", err)
+	}
+	return username, nil
+}
+
+func (v *Validator) checkFilterctl(apiKey string) (string, error) {
+	username, password, err := DecodeApiKey(apiKey)
+	if err != nil {
+		return "", err
+	}
+	hash, ok := v.filterctlPasswd[username]
 	if !ok {
 		return "", fmt.Errorf("unknown username: %s", username)
 	}
@@ -66,6 +104,6 @@ func (v *Validator) add(username, password string) error {
 	if err != nil {
 		return err
 	}
-	v.passwd[username] = hash
+	v.filterctlPasswd[username] = hash
 	return nil
 }

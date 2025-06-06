@@ -35,6 +35,7 @@ const DEFAULT_ADDRESS = "127.0.0.1"
 const DEFAULT_PORT = 2017
 const DEFAULT_SERVER_CERT = "/etc/rescand/rescand.pem"
 const DEFAULT_SERVER_KEY = "/etc/rescand/rescand.key"
+const DEFAULT_PASSWD_FILE = "/etc/master.passwd"
 
 const SHUTDOWN_TIMEOUT = 5
 
@@ -280,7 +281,7 @@ func checkApiKey(w http.ResponseWriter, r *http.Request) (string, bool) {
 		fail(w, "system", "rescand", "API Key failure", 400)
 		return "", false
 	}
-	username, err := validator.check(apiKey[0])
+	username, err := validator.validate(apiKey[0])
 	if err != nil {
 		fail(w, "system", "rescand", fmt.Sprintf("%v", err), 400)
 		return "", false
@@ -546,12 +547,12 @@ func handlePutSieveTrace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	traceDir := filepath.Join(homeDir, "sieve_trace")
-	if ! IsDir(traceDir) {
-	    err := os.Mkdir(traceDir, 0700)
-	    if err != nil {
-		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
-		return
-	    }
+	if !IsDir(traceDir) {
+		err := os.Mkdir(traceDir, 0700)
+		if err != nil {
+			fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
+			return
+		}
 	}
 	u, err := user.Lookup(username)
 	if err != nil {
@@ -788,7 +789,9 @@ func initConfig(configFile string) {
 	viper.SetDefault("hostname", hostname)
 	viper.SetDefault("server_cert", DEFAULT_SERVER_CERT)
 	viper.SetDefault("server_key", DEFAULT_SERVER_KEY)
+	viper.SetDefault("passwd_file", DEFAULT_PASSWD_FILE)
 	viper.SetDefault("require_client_cert", false)
+	viper.SetDefault("validate_system_accounts", true)
 	viper.BindPFlags(pflag.CommandLine)
 	Verbose = viper.GetBool("verbose")
 	Debug = viper.GetBool("debug")
@@ -800,7 +803,7 @@ func initRelay() {
 	if err != nil {
 		log.Fatalf("failed creating filterctl client: %v", err)
 	}
-	validator, err = NewValidator(filterctl)
+	validator, err = NewValidator(filterctl, viper.GetString("passwd_file"))
 	if err != nil {
 		log.Fatalf("failed creating validator: %v", err)
 	}

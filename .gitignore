@@ -2,5 +2,6 @@ rescand
 notes
 testdata/cur
 testdata/rescan
+testdata/master.passwd
 cruft
 postactivate

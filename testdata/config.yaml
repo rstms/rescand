@@ -1,8 +1,8 @@
 cert: ~/ssl/filterctl.pem
 key: ~/ssl/filterctl.key
 ca: /etc/ssl/keymaster.pem
-verbose: false
-more_verbose: false
+verbose: true
+more_verbose: true
 debug: false
 
 filterctld_url: https://mailqueue.mailcapsule.io:4443
@@ -17,6 +17,7 @@ doveadm_url: http://127.0.0.1:2018
 doveadm_api_key: "Authorization"
 #doveadm_verbose: true
 #doveadm_debug: false
+passwd_file: testdata/master.passwd
 
 test:
   maildir: /home/mkrueger/Maildir
