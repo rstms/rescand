@@ -791,7 +791,6 @@ func initConfig(configFile string) {
 	viper.SetDefault("server_key", DEFAULT_SERVER_KEY)
 	viper.SetDefault("passwd_file", DEFAULT_PASSWD_FILE)
 	viper.SetDefault("require_client_cert", false)
-	viper.SetDefault("validate_system_accounts", true)
 	viper.BindPFlags(pflag.CommandLine)
 	Verbose = viper.GetBool("verbose")
 	Debug = viper.GetBool("debug")
@@ -803,7 +802,7 @@ func initRelay() {
 	if err != nil {
 		log.Fatalf("failed creating filterctl client: %v", err)
 	}
-	validator, err = NewValidator(filterctl, viper.GetString("passwd_file"))
+	validator, err = NewValidator(viper.GetString("passwd_file"))
 	if err != nil {
 		log.Fatalf("failed creating validator: %v", err)
 	}
