@@ -52,6 +52,10 @@ func NewDoveadmClient() (*DoveadmClient, error) {
 	}
 	api.verbose = client.verbose
 	api.moreVerbose = client.moreVerbose
+	if client.moreVerbose {
+		log.Printf("doveadm_url: %s\n", url)
+		log.Printf("doveadm_api_key: %s=%s\n", key, value)
+	}
 	return &client, nil
 }
 

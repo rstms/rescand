@@ -4,6 +4,8 @@ ca: /etc/ssl/keymaster.pem
 verbose: true
 more_verbose: true
 debug: false
+validator_verbose: true
+validator_insecure: true
 
 filterctld_url: https://mailqueue.mailcapsule.io:4443
 mailqueue_hostname: mailqueue.mailcapsule.io
