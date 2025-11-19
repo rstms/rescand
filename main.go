@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/rstms/go-daemon"
@@ -48,7 +47,7 @@ var validator *Validator
 var filterctl *APIClient
 
 var (
-	signalFlag = flag.String("s", "", `send signal:
+	signalFlag = pflag.String("signal", "", `send signal:
     stop - shutdown
     reload - reload config
     `)
@@ -739,14 +738,30 @@ func reloadHandler(sig os.Signal) error {
 func main() {
 
 	var configFilename string
+	var versionFlag bool
+	var helpFlag bool
+
 	pflag.String("addr", DEFAULT_ADDRESS, "listen address")
 	pflag.Int("port", DEFAULT_PORT, "listen port")
 	pflag.BoolP("debug", "d", false, "run in foreground mode logging to stdout")
+	pflag.BoolVar(&helpFlag, "help", false, "show help")
 	pflag.BoolP("verbose", "v", false, "verbose mode")
+	pflag.BoolVar(&versionFlag, "version", false, "output program name and version")
 	pflag.Bool("insecure", false, "disable certificate validation")
 	pflag.String("logfile", DEFAULT_LOG_FILE, fmt.Sprintf("config file (default: %s)", DEFAULT_LOG_FILE))
 	pflag.StringVarP(&configFilename, "config", "c", DEFAULT_CONFIG_FILE, fmt.Sprintf("config file (default: %s)", DEFAULT_CONFIG_FILE))
 	pflag.Parse()
+
+	if versionFlag {
+		fmt.Printf("rescand version %s\n", Version)
+		os.Exit(0)
+	}
+
+	if helpFlag {
+		pflag.Usage()
+		os.Exit(0)
+	}
+
 	initConfig(configFilename)
 	for _, command := range pflag.Args() {
 		switch command {
