@@ -275,6 +275,10 @@ func handleGetServerStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func checkApiKey(w http.ResponseWriter, r *http.Request) (string, bool) {
+	realIP := r.Header["X-Real-IP"]
+	if len(realIP) == 1 {
+		log.Printf("X-Real-IP=%s\n", realIP[0])
+	}
 	apiKey := r.Header["X-Api-Key"]
 	if len(apiKey) != 1 || apiKey[0] == "" {
 		fail(w, "system", "rescand", "API Key failure", 400)
