@@ -275,14 +275,17 @@ func handleGetServerStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func checkApiKey(w http.ResponseWriter, r *http.Request) (string, bool) {
-	realIP := r.Header["X-Real-Ip"]
-	log.Printf("X-Real-Ip=%v\n", realIP)
+	sourceIp := r.Header["X-Real-Ip"]
+	if len(sourceIp) != 1 || sourceIp[0] == "" {
+		fail(w, "system", "rescand", "missing X-Real-Ip header", 400)
+		return "", false
+	}
 	apiKey := r.Header["X-Api-Key"]
 	if len(apiKey) != 1 || apiKey[0] == "" {
 		fail(w, "system", "rescand", "API Key failure", 400)
 		return "", false
 	}
-	username, err := validator.validate(apiKey[0])
+	username, err := validator.validate(apiKey[0], sourceIp[0])
 	if err != nil {
 		fail(w, "system", "rescand", fmt.Sprintf("%v", err), 400)
 		return "", false

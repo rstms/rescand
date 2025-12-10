@@ -67,7 +67,8 @@ func NewValidator(filename string) (*Validator, error) {
 	return &validator, nil
 }
 
-func (v *Validator) validate(apiKey string) (string, error) {
+func (v *Validator) validate(apiKey string, sourceIp string) (string, error) {
+	log.Printf("validate: %s %s\n", apiKey, sourceIp)
 	email, password, err := DecodeApiKey(apiKey)
 	if err != nil {
 		return "", err
@@ -89,13 +90,19 @@ func (v *Validator) validate(apiKey string) (string, error) {
 		}
 		return "", err
 	}
-	err = bcrypt.CompareHashAndPassword(hash, []byte(password))
-	if err != nil {
-		err := fmt.Errorf("validate: user '%s': %v", username, err)
-		if v.verbose {
-			log.Printf("%v\n", err)
+	switch sourceIp {
+	case "127.0.0.1":
+		// if source is localhost, check password against api key from config file
+		if password != viper.GetString("localhost_api_key") {
+			err := fmt.Errorf("validate: user '%s': localhost_api_key mismatch", username)
+			return "", err
 		}
-		return "", err
+	default:
+		err = bcrypt.CompareHashAndPassword(hash, []byte(password))
+		if err != nil {
+			err := fmt.Errorf("validate: user '%s': %v", username, err)
+			return "", err
+		}
 	}
 	if v.verbose {
 		log.Printf("validated: '%s'\n", email)
