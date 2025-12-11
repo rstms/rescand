@@ -323,7 +323,8 @@ func handleGetBooks(w http.ResponseWriter, r *http.Request) {
 	var response UserBooksResponse
 	response.Success = true
 	response.User = address
-	response.Message = fmt.Sprintf("%d books", len(dumpResponse.Books))
+	response.Request = requestString
+	response.Message = fmt.Sprintf("book count: %d", len(dumpResponse.Books))
 	response.Books = dumpResponse.Books
 	succeed(w, response.Message, &response)
 }
