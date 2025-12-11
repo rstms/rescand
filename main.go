@@ -275,17 +275,13 @@ func handleGetServerStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func checkApiKey(w http.ResponseWriter, r *http.Request) (string, bool) {
-	sourceIp := r.Header["X-Real-Ip"]
-	if len(sourceIp) != 1 || sourceIp[0] == "" {
-		fail(w, "system", "rescand", "missing X-Real-Ip header", 400)
-		return "", false
-	}
+
 	apiKey := r.Header["X-Api-Key"]
 	if len(apiKey) != 1 || apiKey[0] == "" {
 		fail(w, "system", "rescand", "API Key failure", 400)
 		return "", false
 	}
-	username, err := validator.validate(apiKey[0], sourceIp[0])
+	username, err := validator.validate(apiKey[0])
 	if err != nil {
 		fail(w, "system", "rescand", fmt.Sprintf("%v", err), 400)
 		return "", false
@@ -299,6 +295,28 @@ func requestId(r *http.Request) string {
 		return id[0]
 	}
 	return uuid.New().String()
+}
+
+func handleGetBooks(w http.ResponseWriter, r *http.Request) {
+	sourceIp := r.Header["X-Real-Ip"]
+	if len(sourceIp) != 1 || sourceIp[0] != "127.0.0.1" {
+		fail(w, "system", "rescand", "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	address := r.PathValue("address")
+	requestString := fmt.Sprintf("books: %s", address)
+	var dumpResponse UserDumpResponse
+	_, err := filterctl.Get(fmt.Sprintf("/filterctl/dump/%s/", address), &dumpResponse)
+	if err != nil {
+		fail(w, address, requestString, fmt.Sprintf("%v", err), 500)
+		return
+	}
+	var response UserBooksResponse
+	response.Success = true
+	response.User = address
+	response.Message = fmt.Sprintf("%d books", len(dumpResponse.Books))
+	response.Books = dumpResponse.Books
+	succeed(w, response.Message, &response)
 }
 
 func handleGetUserDump(w http.ResponseWriter, r *http.Request) {
@@ -685,6 +703,7 @@ func runServer() {
 	http.HandleFunc("GET /sieve/trace/", handleGetSieveTrace)
 	http.HandleFunc("PUT /sieve/trace/", handlePutSieveTrace)
 	http.HandleFunc("DELETE /sieve/trace/", handleDeleteSieveTrace)
+	http.HandleFunc("GET /books/{address}/", handleGetBooks)
 
 	go func() {
 		mode := "daemon"
