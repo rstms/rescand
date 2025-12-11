@@ -303,6 +303,12 @@ func handleGetBooks(w http.ResponseWriter, r *http.Request) {
 		fail(w, "system", "rescand", "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	apiKey := r.Header["X-Api-Key"]
+	if len(apiKey) != 1 || apiKey[0] != viper.GetString("localhost_api_key") {
+		fail(w, "system", "rescand", "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	address := r.PathValue("address")
 	requestString := fmt.Sprintf("books: %s", address)
 	var dumpResponse UserDumpResponse
