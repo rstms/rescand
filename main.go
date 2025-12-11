@@ -304,7 +304,10 @@ func handleGetBooks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	apiKey := r.Header["X-Api-Key"]
-	if len(apiKey) != 1 || apiKey[0] != viper.GetString("localhost_api_key") {
+	configKey := viper.GetString("localhost_api_key")
+	if (len(apiKey) != 1) || (apiKey[0] != configKey) {
+		log.Printf("header key: %s\n", apiKey[0])
+		log.Printf("config key: %s\n", configKey)
 		fail(w, "system", "rescand", "unauthorized", http.StatusUnauthorized)
 		return
 	}
