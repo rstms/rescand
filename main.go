@@ -336,11 +336,18 @@ func handleGetBooks(w http.ResponseWriter, r *http.Request) {
 
 func handlePostGmailAuth(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	sourceIp := r.Header["X-Real-Ip"]
-	if len(sourceIp) != 1 || sourceIp[0] != "127.0.0.1" {
-		fail(w, "system", "rescand", "unauthorized", http.StatusUnauthorized)
-		return
-	}
+
+	log.Printf("request: +v\n", *r)
+
+	log.Printf("header: %+v\n", r.Header)
+
+	/*
+		sourceIp := r.Header["X-Real-Ip"]
+		if len(sourceIp) != 1 || sourceIp[0] != "127.0.0.1" {
+			fail(w, "system", "rescand", "unauthorized", http.StatusUnauthorized)
+			return
+		}
+	*/
 
 	var request GmailAuthRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
