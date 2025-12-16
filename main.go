@@ -754,7 +754,7 @@ func runServer() {
 	http.HandleFunc("PUT /sieve/trace/", handlePutSieveTrace)
 	http.HandleFunc("DELETE /sieve/trace/", handleDeleteSieveTrace)
 	http.HandleFunc("GET /books/{address}/", handleGetBooks)
-	http.HandleFunc("POST /gmail/auth/{address}/", handlePostGmailAuth)
+	http.HandleFunc("POST /gmail/auth/", handlePostGmailAuth)
 
 	go func() {
 		mode := "daemon"
