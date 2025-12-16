@@ -329,6 +329,42 @@ func handleGetBooks(w http.ResponseWriter, r *http.Request) {
 	succeed(w, response.Message, &response)
 }
 
+func handlePostGmailAuth(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	sourceIp := r.Header["X-Real-Ip"]
+	if len(sourceIp) != 1 || sourceIp[0] != "127.0.0.1" {
+		fail(w, "system", "rescand", "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	address := r.PathValue("address")
+	requestString := fmt.Sprintf("gmail-auth: %s", address)
+
+	var request_data map[string]any
+	err := json.NewDecoder(r.Body).Decode(&request_data)
+	if err != nil {
+		fail(w, "system", "rescand", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("gmail_auth_address=%s\n", address)
+	log.Printf("gmail_auth_data=%+v\n", request_data)
+
+	/*
+		var dumpResponse UserDumpResponse
+		_, err := filterctl.Get(fmt.Sprintf("/filterctl/dump/%s/", address), &dumpResponse)
+		if err != nil {
+			fail(w, address, requestString, fmt.Sprintf("%v", err), 500)
+			return
+		}
+	*/
+	var response Response
+	response.Success = true
+	response.User = address
+	response.Request = requestString
+	response.Message = fmt.Sprintf("gmail account authorized: %s", address)
+	succeed(w, response.Message, &response)
+}
+
 func handleGetUserDump(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	username, ok := checkApiKey(w, r)
@@ -714,6 +750,7 @@ func runServer() {
 	http.HandleFunc("PUT /sieve/trace/", handlePutSieveTrace)
 	http.HandleFunc("DELETE /sieve/trace/", handleDeleteSieveTrace)
 	http.HandleFunc("GET /books/{address}/", handleGetBooks)
+	http.HandleFunc("POST /gmail/auth/{address}/", handlePostGmailAuth)
 
 	go func() {
 		mode := "daemon"
