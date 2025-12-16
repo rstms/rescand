@@ -128,6 +128,11 @@ type SieveTraceResponse struct {
 	Enabled bool
 }
 
+type GmailAuthRequest struct {
+	Address string
+	JWT     string
+}
+
 func fail(w http.ResponseWriter, user, request, message string, status int) {
 	log.Printf("  [%d] %s", status, message)
 	w.WriteHeader(status)
@@ -336,18 +341,17 @@ func handlePostGmailAuth(w http.ResponseWriter, r *http.Request) {
 		fail(w, "system", "rescand", "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	address := r.PathValue("address")
-	requestString := fmt.Sprintf("gmail-auth: %s", address)
 
-	var request_data map[string]any
-	err := json.NewDecoder(r.Body).Decode(&request_data)
+	var request GmailAuthRequest
+	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
 		fail(w, "system", "rescand", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
 		return
 	}
+	requestString := fmt.Sprintf("gmail-auth: %s", request.Address)
 
-	log.Printf("gmail_auth_address=%s\n", address)
-	log.Printf("gmail_auth_data=%+v\n", request_data)
+	log.Printf("gmail_auth_address=%s\n", request.Address)
+	log.Printf("gmail_auth_jwt=%s\n", request.JWT)
 
 	/*
 		var dumpResponse UserDumpResponse
@@ -359,9 +363,9 @@ func handlePostGmailAuth(w http.ResponseWriter, r *http.Request) {
 	*/
 	var response Response
 	response.Success = true
-	response.User = address
+	response.User = request.Address
 	response.Request = requestString
-	response.Message = fmt.Sprintf("gmail account authorized: %s", address)
+	response.Message = fmt.Sprintf("received gmail auth token for account %s", request.Address)
 	succeed(w, response.Message, &response)
 }
 
