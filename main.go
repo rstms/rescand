@@ -338,32 +338,43 @@ func handleGetBooks(w http.ResponseWriter, r *http.Request) {
 func handlePostGmailAuth(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	log.Printf("request: %+v\n", *r)
-	log.Printf("header: %+v\n", r.Header)
+	_, domain, ok := strings.Cut(viper.GetString("mailqueue_hostname"), ".")
+	if !ok {
+		log.Printf("domain config failed: %s\n", domain)
+		fail(w, "system", "gmail_auth", "configuration failure", 500)
+	}
 
-	log.Printf("origin: %s\n", r.Header["Origin"])
+	var origin string
+	if len(r.Header["Origin"]) > 0 {
+		origin = r.Header["Origin"][0]
+	}
+	log.Printf("origin: %s\n", origin)
+	expectedOrigin := "https://webmail." + domain
+	if origin != expectedOrigin {
+		log.Printf("unauthorized origin: expected %s, got %s\n", expectedOrigin, origin)
+		fail(w, "system", "gmail_auth", "unauthorized", http.StatusUnauthorized)
+	}
+
 	log.Printf("RemoteAddr: %s\n", r.RemoteAddr)
-
-	/*
-		sourceIp := r.Header["X-Real-Ip"]
-		if len(sourceIp) != 1 || sourceIp[0] != "127.0.0.1" {
-			fail(w, "system", "rescand", "unauthorized", http.StatusUnauthorized)
-			return
-		}
-	*/
+	sourceIp, _, ok := strings.Cut(r.RemoteAddr, ":")
+	if !ok || sourceIp != "127.0.0.1" {
+		fail(w, "system", "gmail_auth", "unauthorized", http.StatusUnauthorized)
+	}
 
 	var request GmailAuthRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		fail(w, "system", "rescand", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
+		fail(w, "system", "gmail_auth", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
 		return
 	}
 
-	_, domain, ok := strings.Cut(viper.GetString("mailqueue_hostname"), ".")
-	if !ok {
-		fail(w, request.Username, "gmail auth request", "configuration failure", 500)
+	if request.Username == "" {
+		fail(w, "system", "gmail_auth", "missing username", http.StatusBadRequest)
+		return
 	}
-
+	if request.Gmail == "" {
+		fail(w, "system", "gmail_auth", "missing gmail address", http.StatusBadRequest)
+	}
 	localAddress := fmt.Sprintf("%s@%s", request.Username, domain)
 	requestString := fmt.Sprintf("authorize %s as %s", localAddress, request.Gmail)
 
@@ -374,11 +385,11 @@ func handlePostGmailAuth(w http.ResponseWriter, r *http.Request) {
 	var dumpResponse UserDumpResponse
 	_, err = filterctl.Get(fmt.Sprintf("/filterctl/dump/%s/", localAddress), &dumpResponse)
 	if err != nil {
-		fail(w, localAddress, requestString, fmt.Sprintf("failed: %s is not a valid address", localAddress), 404)
+		fail(w, localAddress, requestString, "local account validation failed", 500)
 		return
 	}
-	if dumpResponse.User != localAddress {
-		fail(w, localAddress, requestString, "failed: local address mismatch", 400)
+	if dumpResponse.User != localAddress || len(dumpResponse.Password) == 0 {
+		fail(w, localAddress, requestString, fmt.Sprintf("%s is not a valid address", localAddress), 404)
 		return
 	}
 
@@ -387,7 +398,7 @@ func handlePostGmailAuth(w http.ResponseWriter, r *http.Request) {
 	var response Response
 	response.Success = true
 	response.Request = requestString
-	response.Message = fmt.Sprintf("received gmail credential: [ %s <-> %s ]", localAddress, request.Gmail)
+	response.Message = fmt.Sprintf("received gmail credential: %s == %s", localAddress, request.Gmail)
 	succeed(w, response.Message, &response)
 }
 
