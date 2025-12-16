@@ -368,15 +368,20 @@ func handlePostGmailAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	localAddress := fmt.Sprintf("%s@%s", request.Username, domain)
+	requestString := fmt.Sprintf("authorize %s as %s", localAddress, request.Gmail)
+
+	if !strings.HasPrefix("gmail.", localAddress) {
+		fail(w, localAddress, requestString, "local username requires 'gmail.' prefix", http.StatusBadRequest)
+		return
+	}
 	if request.Username == "" {
-		fail(w, "system", "gmail_auth", "missing username", http.StatusBadRequest)
+		fail(w, localAddress, requestString, "missing username", http.StatusBadRequest)
 		return
 	}
 	if request.Gmail == "" {
-		fail(w, "system", "gmail_auth", "missing gmail address", http.StatusBadRequest)
+		fail(w, localAddress, requestString, "missing gmail address", http.StatusBadRequest)
 	}
-	localAddress := fmt.Sprintf("%s@%s", request.Username, domain)
-	requestString := fmt.Sprintf("authorize %s as %s", localAddress, request.Gmail)
 
 	log.Printf("localAddress: %s\n", localAddress)
 	log.Printf("gmailAddress: %s\n", request.Gmail)
