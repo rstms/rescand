@@ -129,8 +129,9 @@ type SieveTraceResponse struct {
 }
 
 type GmailAuthRequest struct {
-	Address string
-	JWT     string
+	Username string
+	Gmail    string
+	JWT      string
 }
 
 func fail(w http.ResponseWriter, user, request, message string, status int) {
@@ -337,9 +338,11 @@ func handleGetBooks(w http.ResponseWriter, r *http.Request) {
 func handlePostGmailAuth(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	log.Printf("request: +v\n", *r)
-
+	log.Printf("request: %+v\n", *r)
 	log.Printf("header: %+v\n", r.Header)
+
+	log.Printf("origin: %s\n", r.Header["Origin"])
+	log.Printf("RemoteAddr: %s\n", r.RemoteAddr)
 
 	/*
 		sourceIp := r.Header["X-Real-Ip"]
@@ -355,24 +358,36 @@ func handlePostGmailAuth(w http.ResponseWriter, r *http.Request) {
 		fail(w, "system", "rescand", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
 		return
 	}
-	requestString := fmt.Sprintf("gmail-auth: %s", request.Address)
 
-	log.Printf("gmail_auth_address=%s\n", request.Address)
-	log.Printf("gmail_auth_jwt=%s\n", request.JWT)
+	_, domain, ok := strings.Cut(viper.GetString("mailqueue_hostname"), ".")
+	if !ok {
+		fail(w, request.Username, "gmail auth request", "configuration failure", 500)
+	}
 
-	/*
-		var dumpResponse UserDumpResponse
-		_, err := filterctl.Get(fmt.Sprintf("/filterctl/dump/%s/", address), &dumpResponse)
-		if err != nil {
-			fail(w, address, requestString, fmt.Sprintf("%v", err), 500)
-			return
-		}
-	*/
+	localAddress := fmt.Sprintf("%s@%s", request.Username, domain)
+	requestString := fmt.Sprintf("authorize %s as %s", localAddress, request.Gmail)
+
+	log.Printf("localAddress: %s\n", localAddress)
+	log.Printf("gmailAddress: %s\n", request.Gmail)
+	log.Printf("JWT=%s\n", request.JWT)
+
+	var dumpResponse UserDumpResponse
+	_, err = filterctl.Get(fmt.Sprintf("/filterctl/dump/%s/", localAddress), &dumpResponse)
+	if err != nil {
+		fail(w, localAddress, requestString, fmt.Sprintf("failed: %s is not a valid address", localAddress), 404)
+		return
+	}
+	if dumpResponse.User != localAddress {
+		fail(w, localAddress, requestString, "failed: local address mismatch", 400)
+		return
+	}
+
+	//TODO: upload the JWT to the mailqueue to configure fetchmail
+
 	var response Response
 	response.Success = true
-	response.User = request.Address
 	response.Request = requestString
-	response.Message = fmt.Sprintf("received gmail auth token for account %s", request.Address)
+	response.Message = fmt.Sprintf("received gmail credential: [ %s <-> %s ]", localAddress, request.Gmail)
 	succeed(w, response.Message, &response)
 }
 
