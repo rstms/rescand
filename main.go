@@ -27,6 +27,8 @@ import (
 const serverName = "rescand"
 const Version = "1.4.36"
 
+const DAEMON = "RESCAN_DAEMON"
+
 const DEFAULT_CONFIG_FILE = "/etc/rescand/config.yaml"
 
 const DEFAULT_LOG_FILE = "/var/log/rescand"
@@ -128,12 +130,6 @@ type SieveTraceResponse struct {
 	Enabled bool
 }
 
-type GmailAuthRequest struct {
-	Username string
-	Gmail    string
-	JWT      string
-}
-
 func fail(w http.ResponseWriter, user, request, message string, status int) {
 	log.Printf("  [%d] %s", status, message)
 	w.WriteHeader(status)
@@ -177,7 +173,7 @@ func handlePostRescan(w http.ResponseWriter, r *http.Request) {
 	var request RescanRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		fail(w, "system", "rescan", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
+		fail(w, DAEMON, "rescan", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
 		return
 	}
 	requestString := fmt.Sprintf("start rescan: user=%s folder=%s messageIds=%v", request.Username, request.Folder, request.MessageIds)
@@ -194,7 +190,11 @@ func handlePostRescan(w http.ResponseWriter, r *http.Request) {
 
 	var response RescanResponse
 	rescanIds := []string{rescan.Status.Id}
-	response.Request = requestId(r)
+	response.Request, err = requestId(r)
+	if err != nil {
+		fail(w, request.Username, requestString, fmt.Sprintf("Request ID fail: %v", err), http.StatusInternalServerError)
+		return
+	}
 	returnRescanStatus(w, "rescan started", &rescanIds, &response)
 }
 
@@ -210,7 +210,12 @@ func handleGetRescanStatus(w http.ResponseWriter, r *http.Request) {
 		log.Println(requestString)
 	}
 	var response RescanResponse
-	response.Request = requestId(r)
+	var err error
+	response.Request, err = requestId(r)
+	if err != nil {
+		fail(w, DAEMON, requestString, fmt.Sprintf("Request ID fail: %v", err), http.StatusInternalServerError)
+		return
+	}
 	returnRescanStatus(w, "rescan status", &rescanIds, &response)
 }
 
@@ -225,7 +230,12 @@ func handleGetAllRescanStatus(w http.ResponseWriter, r *http.Request) {
 		log.Println(requestString)
 	}
 	var response RescanResponse
-	response.Request = requestId(r)
+	var err error
+	response.Request, err = requestId(r)
+	if err != nil {
+		fail(w, DAEMON, requestString, fmt.Sprintf("Request ID fail: %v", err), http.StatusInternalServerError)
+		return
+	}
 	returnRescanStatus(w, "rescan status", nil, &response)
 }
 
@@ -252,7 +262,12 @@ func handleDeleteRescan(w http.ResponseWriter, r *http.Request) {
 	} else {
 		response.Message = "not found"
 	}
-	response.Request = requestId(r)
+	response.Request, err = requestId(r)
+	if err != nil {
+		fail(w, DAEMON, requestString, fmt.Sprintf("Request ID fail: %v", err), http.StatusInternalServerError)
+		return
+	}
+
 	succeed(w, response.Message, &response)
 }
 
@@ -263,13 +278,19 @@ func handleGetServerStatus(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Status request\n")
 	}
 
+	requestString := "get server status"
 	response := StatusResponse{}
 	response.Success = true
 	response.User = "rescand"
 	response.Message = "status: running"
 	response.Banner = serverBanner
 	response.State = serverState
-	response.Request = requestId(r)
+	var err error
+	response.Request, err = requestId(r)
+	if err != nil {
+		fail(w, DAEMON, requestString, fmt.Sprintf("Request ID fail: %v", err), http.StatusInternalServerError)
+		return
+	}
 
 	if Verbose {
 		log.Printf("response: %v\n", response)
@@ -284,29 +305,33 @@ func checkApiKey(w http.ResponseWriter, r *http.Request) (string, bool) {
 
 	apiKey := r.Header["X-Api-Key"]
 	if len(apiKey) != 1 || apiKey[0] == "" {
-		fail(w, "system", "rescand", "API Key failure", 400)
+		fail(w, DAEMON, "rescand", "API Key failure", 400)
 		return "", false
 	}
 	username, err := validator.validate(apiKey[0])
 	if err != nil {
-		fail(w, "system", "rescand", fmt.Sprintf("%v", err), 400)
+		fail(w, DAEMON, "rescand", fmt.Sprintf("%v", err), 400)
 		return "", false
 	}
 	return username, true
 }
 
-func requestId(r *http.Request) string {
+func requestId(r *http.Request) (string, error) {
 	id := r.Header["X-Request-Id"]
 	if len(id) > 0 && id[0] != "" {
-		return id[0]
+		return id[0], nil
 	}
-	return uuid.New().String()
+	u, err := uuid.NewV7()
+	if err != nil {
+		return "", err
+	}
+	return u.String(), nil
 }
 
 func handleGetBooks(w http.ResponseWriter, r *http.Request) {
 	sourceIp := r.Header["X-Real-Ip"]
 	if len(sourceIp) != 1 || sourceIp[0] != "127.0.0.1" {
-		fail(w, "system", "rescand", "unauthorized", http.StatusUnauthorized)
+		fail(w, DAEMON, "rescand", "unauthorized", http.StatusUnauthorized)
 		return
 	}
 	apiKey := r.Header["X-Api-Key"]
@@ -314,7 +339,7 @@ func handleGetBooks(w http.ResponseWriter, r *http.Request) {
 	if (len(apiKey) != 1) || (apiKey[0] != configKey) {
 		log.Printf("header key: %s\n", apiKey[0])
 		log.Printf("config key: %s\n", configKey)
-		fail(w, "system", "rescand", "unauthorized", http.StatusUnauthorized)
+		fail(w, DAEMON, "rescand", "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -332,78 +357,6 @@ func handleGetBooks(w http.ResponseWriter, r *http.Request) {
 	response.Request = requestString
 	response.Message = fmt.Sprintf("book count: %d", len(dumpResponse.Books))
 	response.Books = dumpResponse.Books
-	succeed(w, response.Message, &response)
-}
-
-func handlePostGmailAuth(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
-	_, domain, ok := strings.Cut(viper.GetString("mailqueue_hostname"), ".")
-	if !ok {
-		log.Printf("domain config failed: %s\n", domain)
-		fail(w, "system", "gmail_auth", "configuration failure", 500)
-	}
-
-	var origin string
-	if len(r.Header["Origin"]) > 0 {
-		origin = r.Header["Origin"][0]
-	}
-	log.Printf("origin: %s\n", origin)
-	expectedOrigin := "https://webmail." + domain
-	if origin != expectedOrigin {
-		log.Printf("unauthorized origin: expected %s, got %s\n", expectedOrigin, origin)
-		fail(w, "system", "gmail_auth", "unauthorized", http.StatusUnauthorized)
-	}
-
-	log.Printf("RemoteAddr: %s\n", r.RemoteAddr)
-	sourceIp, _, ok := strings.Cut(r.RemoteAddr, ":")
-	if !ok || sourceIp != "127.0.0.1" {
-		fail(w, "system", "gmail_auth", "unauthorized", http.StatusUnauthorized)
-	}
-
-	var request GmailAuthRequest
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
-		fail(w, "system", "gmail_auth", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	localAddress := fmt.Sprintf("%s@%s", request.Username, domain)
-	requestString := fmt.Sprintf("authorize %s as %s", localAddress, request.Gmail)
-
-	if !strings.HasPrefix(localAddress, "gmail.") {
-		fail(w, localAddress, requestString, "local username requires 'gmail.' prefix", http.StatusBadRequest)
-		return
-	}
-	if request.Username == "" {
-		fail(w, localAddress, requestString, "missing username", http.StatusBadRequest)
-		return
-	}
-	if request.Gmail == "" {
-		fail(w, localAddress, requestString, "missing gmail address", http.StatusBadRequest)
-	}
-
-	log.Printf("localAddress: %s\n", localAddress)
-	log.Printf("gmailAddress: %s\n", request.Gmail)
-	log.Printf("JWT=%s\n", request.JWT)
-
-	var dumpResponse UserDumpResponse
-	_, err = filterctl.Get(fmt.Sprintf("/filterctl/dump/%s/", localAddress), &dumpResponse)
-	if err != nil {
-		fail(w, localAddress, requestString, "local account validation failed", 500)
-		return
-	}
-	if dumpResponse.User != localAddress || len(dumpResponse.Password) == 0 {
-		fail(w, localAddress, requestString, fmt.Sprintf("%s is not a valid address", localAddress), 404)
-		return
-	}
-
-	//TODO: upload the JWT to the mailqueue to configure fetchmail
-
-	var response Response
-	response.Success = true
-	response.Request = requestString
-	response.Message = fmt.Sprintf("received gmail credential: %s == %s", localAddress, request.Gmail)
 	succeed(w, response.Message, &response)
 }
 
@@ -431,7 +384,11 @@ func handleGetUserDump(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.Classes = classesResponse.Classes
-	response.Request = requestId(r)
+	response.Request, err = requestId(r)
+	if err != nil {
+		fail(w, DAEMON, requestString, fmt.Sprintf("Request ID fail: %v", err), http.StatusInternalServerError)
+		return
+	}
 	succeed(w, response.Message, &response)
 }
 
@@ -451,7 +408,11 @@ func handleGetClasses(w http.ResponseWriter, r *http.Request) {
 		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
 		return
 	}
-	response.Request = requestId(r)
+	response.Request, err = requestId(r)
+	if err != nil {
+		fail(w, DAEMON, requestString, fmt.Sprintf("Request ID fail: %v", err), http.StatusInternalServerError)
+		return
+	}
 	succeed(w, response.Message, &response)
 }
 
@@ -464,7 +425,7 @@ func handlePostClasses(w http.ResponseWriter, r *http.Request) {
 	var request ClassesRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		fail(w, "system", "rescand", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
+		fail(w, DAEMON, "rescand", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
 		return
 	}
 	request.Address = username
@@ -479,7 +440,11 @@ func handlePostClasses(w http.ResponseWriter, r *http.Request) {
 		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
 		return
 	}
-	response.Request = requestId(r)
+	response.Request, err = requestId(r)
+	if err != nil {
+		fail(w, DAEMON, requestString, fmt.Sprintf("Request ID fail: %v", err), http.StatusInternalServerError)
+		return
+	}
 	succeed(w, response.Message, &response)
 }
 
@@ -492,7 +457,7 @@ func handlePostBook(w http.ResponseWriter, r *http.Request) {
 	var request AddBookRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		fail(w, "system", "rescand", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
+		fail(w, DAEMON, "rescand", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
 		return
 	}
 	request.Username = username
@@ -507,7 +472,11 @@ func handlePostBook(w http.ResponseWriter, r *http.Request) {
 		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
 		return
 	}
-	response.Request = requestId(r)
+	response.Request, err = requestId(r)
+	if err != nil {
+		fail(w, DAEMON, requestString, fmt.Sprintf("Request ID fail: %v", err), http.StatusInternalServerError)
+		return
+	}
 	succeed(w, response.Message, &response)
 }
 
@@ -528,7 +497,11 @@ func handleDeleteBook(w http.ResponseWriter, r *http.Request) {
 		fail(w, username, requestString, fmt.Sprintf("%v", err), 500)
 		return
 	}
-	response.Request = requestId(r)
+	response.Request, err = requestId(r)
+	if err != nil {
+		fail(w, DAEMON, requestString, fmt.Sprintf("Request ID fail: %v", err), http.StatusInternalServerError)
+		return
+	}
 	succeed(w, response.Message, &response)
 }
 
@@ -541,7 +514,7 @@ func handlePostAddress(w http.ResponseWriter, r *http.Request) {
 	var request AddAddressRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		fail(w, "system", "rescand", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
+		fail(w, DAEMON, "rescand", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
 		return
 	}
 	request.Username = username
@@ -578,7 +551,11 @@ func handlePostAddress(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	response.Request = requestId(r)
+	response.Request, err = requestId(r)
+	if err != nil {
+		fail(w, DAEMON, requestString, fmt.Sprintf("Request ID fail: %v", err), http.StatusInternalServerError)
+		return
+	}
 	succeed(w, response.Message, &response)
 }
 
@@ -600,7 +577,11 @@ func handleDeleteAddress(w http.ResponseWriter, r *http.Request) {
 		fail(w, username, requestString, fmt.Sprintf("%v", err), 400)
 		return
 	}
-	response.Request = requestId(r)
+	response.Request, err = requestId(r)
+	if err != nil {
+		fail(w, DAEMON, requestString, fmt.Sprintf("Request ID fail: %v", err), http.StatusInternalServerError)
+		return
+	}
 	succeed(w, response.Message, &response)
 }
 
@@ -636,7 +617,12 @@ func handleGetSieveTrace(w http.ResponseWriter, r *http.Request) {
 		response.Enabled = false
 		response.Message = "sieve_trace disabled"
 	}
-	response.Request = requestId(r)
+	var err error
+	response.Request, err = requestId(r)
+	if err != nil {
+		fail(w, DAEMON, requestString, fmt.Sprintf("Request ID fail: %v", err), http.StatusInternalServerError)
+		return
+	}
 	succeed(w, response.Message, &response)
 }
 
@@ -687,7 +673,11 @@ func handlePutSieveTrace(w http.ResponseWriter, r *http.Request) {
 	var response SieveTraceResponse
 	response.User = address
 	response.Success = true
-	response.Request = requestId(r)
+	response.Request, err = requestId(r)
+	if err != nil {
+		fail(w, DAEMON, requestString, fmt.Sprintf("Request ID fail: %v", err), http.StatusInternalServerError)
+		return
+	}
 	response.Message = "sieve_trace enabled"
 	response.Enabled = true
 	succeed(w, response.Message, &response)
@@ -724,7 +714,12 @@ func handleDeleteSieveTrace(w http.ResponseWriter, r *http.Request) {
 	var response SieveTraceResponse
 	response.User = address
 	response.Success = true
-	response.Request = requestId(r)
+	var err error
+	response.Request, err = requestId(r)
+	if err != nil {
+		fail(w, DAEMON, requestString, fmt.Sprintf("Request ID fail: %v", err), http.StatusInternalServerError)
+		return
+	}
 	response.Message = "sieve_trace disabled"
 	response.Enabled = false
 	succeed(w, response.Message, &response)
@@ -792,7 +787,6 @@ func runServer() {
 	http.HandleFunc("PUT /sieve/trace/", handlePutSieveTrace)
 	http.HandleFunc("DELETE /sieve/trace/", handleDeleteSieveTrace)
 	http.HandleFunc("GET /books/{address}/", handleGetBooks)
-	http.HandleFunc("POST /gmail/auth/", handlePostGmailAuth)
 
 	go func() {
 		mode := "daemon"
