@@ -138,6 +138,7 @@ type Rescan struct {
 	MessageFiles          []MessageFile
 	mutex                 sync.Mutex
 	filterctl             *APIClient
+	rspamd                *APIClient
 	doveadm               *DoveadmClient
 	username              string
 	mailBox               string
@@ -258,6 +259,11 @@ func NewRescan(request *RescanRequest) (*Rescan, error) {
 	var err error
 
 	rescan.filterctl, err = NewFilterctlClient()
+	if err != nil {
+		return nil, err
+	}
+
+	rescan.rspamd, err = NewRspamdClient()
 	if err != nil {
 		return nil, err
 	}
@@ -437,6 +443,7 @@ func (r *Rescan) Start() {
 		r.Status.Running = false
 		r.doveadm = nil
 		r.filterctl = nil
+		r.rspamd = nil
 		r.completed = true
 		r.completionReported = false
 		r.mutex.Unlock()
@@ -964,7 +971,7 @@ func (r *Rescan) requestRescan(index int, fromAddr, deliveredToAddr, senderIP st
 		"Deliver-To": r.username,
 	}
 
-	_, err := r.filterctl.Post("/rspamc/checkv2", content, response, &requestHeaders)
+	_, err := r.rspamd.Post("/rspamc/checkv2", content, response, &requestHeaders)
 	if err != nil {
 		return fmt.Errorf("rspamd check request failed: %v", err)
 	}

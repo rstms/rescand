@@ -328,6 +328,7 @@ func requestId(r *http.Request) (string, error) {
 	return u.String(), nil
 }
 
+/*
 func handleGetBooks(w http.ResponseWriter, r *http.Request) {
 	sourceIp := r.Header["X-Real-Ip"]
 	if len(sourceIp) != 1 || sourceIp[0] != "127.0.0.1" {
@@ -359,6 +360,7 @@ func handleGetBooks(w http.ResponseWriter, r *http.Request) {
 	response.Books = dumpResponse.Books
 	succeed(w, response.Message, &response)
 }
+*/
 
 func handleGetUserDump(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
@@ -786,7 +788,7 @@ func runServer() {
 	http.HandleFunc("GET /sieve/trace/", handleGetSieveTrace)
 	http.HandleFunc("PUT /sieve/trace/", handlePutSieveTrace)
 	http.HandleFunc("DELETE /sieve/trace/", handleDeleteSieveTrace)
-	http.HandleFunc("GET /books/{address}/", handleGetBooks)
+	//http.HandleFunc("GET /books/{address}/", handleGetBooks)
 
 	go func() {
 		mode := "daemon"

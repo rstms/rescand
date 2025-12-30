@@ -45,9 +45,17 @@ func GetViperPath(key string) (string, error) {
 
 }
 
+func NewRspamdClient() (*APIClient, error) {
+	rspamd_url := viper.GetString("rspamd_url")
+	return NewAPIClient(rspamd_url, nil)
+}
+
 func NewFilterctlClient() (*APIClient, error) {
 	filterctl_url := viper.GetString("filterctld_url")
-	return NewAPIClient(filterctl_url, nil)
+	headers := map[string]string{
+		"X-Api-Key": viper.GetString("filterctld_api_key"),
+	}
+	return NewAPIClient(filterctl_url, &headers)
 }
 
 func NewAPIClient(url string, headers *map[string]string) (*APIClient, error) {
