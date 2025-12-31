@@ -409,7 +409,7 @@ func (r *Rescan) Start() {
 			startChan <- i
 		}
 
-		// all joobs have been started, wait for all of them to finish
+		// all jobs have been started, wait for all of them to finish
 		wg.Wait()
 
 		// close channels since all jobs are complete
@@ -452,7 +452,7 @@ func (r *Rescan) Start() {
 			log.Printf("Rescan complete: %s", r.Status.Id)
 		}
 
-		// setup a prune job to delete us out of RescanJobs after a while
+		// setup a prune job to delete us out of RescanJobs after a delay period
 		go func(rescanId string) {
 			pruneSeconds := viper.GetInt64("prune_seconds")
 			if pruneSeconds > 0 {
