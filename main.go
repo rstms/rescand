@@ -25,7 +25,7 @@ import (
 )
 
 const serverName = "rescand"
-const Version = "1.4.40"
+const Version = "1.4.41"
 
 const DAEMON = "RESCAN_DAEMON"
 
