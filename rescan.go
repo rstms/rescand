@@ -837,6 +837,10 @@ func (r *Rescan) rescanMessage(index int) error {
 		return fmt.Errorf("requestRescan: %v", err)
 	}
 
+	if r.verbose {
+		log.Printf("response: %s\n", FormatJSON(response))
+	}
+
 	err = r.mungeHeaders(index, header, fromAddr, senderIP, &response, &keys)
 	if err != nil {
 		return fmt.Errorf("mungeHeaders: %v", err)
