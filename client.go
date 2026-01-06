@@ -193,6 +193,11 @@ func (a *APIClient) request(method, path string, requestData, responseData inter
 	if a.verbose {
 		log.Printf("--> '%s' (%d bytes)\n", response.Status, len(body))
 		if a.moreVerbose {
+			log.Println("BEGIN-RESPONSE-HEADER")
+			for key, value := range response.Header {
+				log.Printf("%s: %s\n", key, value)
+			}
+			log.Println("END-RESPONSE-HEADER")
 			log.Println("BEGIN-RESPONSE-BODY")
 			log.Println(string(body))
 			log.Println("END-RESPONSE-BODY")

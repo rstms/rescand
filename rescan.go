@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/emersion/go-message"
@@ -134,33 +135,37 @@ type RescanImportAction struct {
 }
 
 type Rescan struct {
-	Status                RescanStatus
-	MessageFiles          []MessageFile
-	mutex                 sync.Mutex
-	filterctl             *APIClient
-	rspamd                *APIClient
-	doveadm               *DoveadmClient
-	username              string
-	mailBox               string
-	mailDir               string
-	outBox                string
-	outDir                string
-	sieveFilter           string
-	sieveScript           string
-	sieveVerbose          bool
-	wg                    sync.WaitGroup
-	verbose               bool
-	moreVerbose           bool
-	backupEnabled         bool
-	subscribeRescan       bool
-	dovecotDelayMs        int64
-	dovecotTickerMs       int64
-	dovecotTimeoutSeconds int64
-	sleepSeconds          int64
-	hostname              string
-	midMap                map[string]int
-	completed             bool
-	completionReported    bool
+	Status                     RescanStatus
+	MessageFiles               []MessageFile
+	mutex                      sync.Mutex
+	filterctl                  *APIClient
+	rspamd                     *APIClient
+	doveadm                    *DoveadmClient
+	username                   string
+	mailBox                    string
+	mailDir                    string
+	outBox                     string
+	outDir                     string
+	sieveFilter                string
+	sieveScript                string
+	sieveVerbose               bool
+	wg                         sync.WaitGroup
+	verbose                    bool
+	moreVerbose                bool
+	backupEnabled              bool
+	subscribeRescan            bool
+	dovecotDelayMs             int64
+	dovecotTickerMs            int64
+	dovecotTimeoutSeconds      int64
+	sleepSeconds               int64
+	hostname                   string
+	midMap                     map[string]int
+	completed                  bool
+	completionReported         bool
+	disabledGroups             []string
+	disabledSymbols            []string
+	gmailImportDisabledGroups  []string
+	gmailImportDisabledSymbols []string
 }
 
 var jobs sync.Mutex
@@ -179,6 +184,10 @@ func setViperDefaults() {
 	viper.SetDefault("sieve_script", "/usr/local/lib/dovecot/sieve/new-mail.sieve")
 	viper.SetDefault("sieve_verbose", false)
 	viper.SetDefault("extra_verbose", false)
+	viper.SetDefault("disabled_groups", []string{})
+	viper.SetDefault("disabled_symbols", []string{"DATE_IN_PAST", "SPAM_FLAG"})
+	viper.SetDefault("gmail_import_disabled_groups", []string{"spf", "dkim"})
+	viper.SetDefault("gmail_import_disabled_symbols", []string{"FORGED_RECIPIENTS", "GOOGLE_FORWARDING_MID_MISSING"})
 	viperDefaultsSet = true
 }
 
@@ -228,20 +237,24 @@ func NewRescan(request *RescanRequest) (*Rescan, error) {
 			Errors:  make([]RescanResult, 0),
 			Actions: make([]RescanResult, 0),
 		},
-		MessageFiles:          make([]MessageFile, 0),
-		verbose:               viper.GetBool("verbose"),
-		moreVerbose:           viper.GetBool("more_verbose"),
-		backupEnabled:         viper.GetBool("backup_enabled"),
-		subscribeRescan:       viper.GetBool("subscribe_rescan"),
-		sieveFilter:           viper.GetString("sieve_filter"),
-		sieveScript:           viper.GetString("sieve_script"),
-		sieveVerbose:          viper.GetBool("sieve_verbose"),
-		sleepSeconds:          viper.GetInt64("sleep_seconds"),
-		dovecotDelayMs:        viper.GetInt64("dovecot_delay_ms"),
-		dovecotTickerMs:       viper.GetInt64("dovecot_ticker_ms"),
-		dovecotTimeoutSeconds: viper.GetInt64("dovecot_timeout_seconds"),
-		hostname:              viper.GetString("mailqueue_hostname"),
-		midMap:                make(map[string]int),
+		MessageFiles:               make([]MessageFile, 0),
+		verbose:                    viper.GetBool("verbose"),
+		moreVerbose:                viper.GetBool("more_verbose"),
+		backupEnabled:              viper.GetBool("backup_enabled"),
+		subscribeRescan:            viper.GetBool("subscribe_rescan"),
+		sieveFilter:                viper.GetString("sieve_filter"),
+		sieveScript:                viper.GetString("sieve_script"),
+		sieveVerbose:               viper.GetBool("sieve_verbose"),
+		sleepSeconds:               viper.GetInt64("sleep_seconds"),
+		dovecotDelayMs:             viper.GetInt64("dovecot_delay_ms"),
+		dovecotTickerMs:            viper.GetInt64("dovecot_ticker_ms"),
+		dovecotTimeoutSeconds:      viper.GetInt64("dovecot_timeout_seconds"),
+		hostname:                   viper.GetString("mailqueue_hostname"),
+		midMap:                     make(map[string]int),
+		disabledGroups:             viper.GetStringSlice("disabled_groups"),
+		disabledSymbols:            viper.GetStringSlice("disabled_symbols"),
+		gmailImportDisabledGroups:  viper.GetStringSlice("gmail_import_disabled_groups"),
+		gmailImportDisabledSymbols: viper.GetStringSlice("gmail_import_disabled_symbols"),
 	}
 
 	if rescan.moreVerbose {
@@ -785,12 +798,22 @@ func (r *Rescan) rescanMessage(index int) error {
 	lines := strings.Split(string(content), "\n")
 
 	if r.moreVerbose {
-		log.Println("---BEGIN RESCAN HEADERS---")
-		fields := header.Fields()
-		for fields.Next() {
+		log.Println("---BEGIN RESCAN MESSAGE HEADERS---")
+	}
+
+	var gmailImport bool
+	fields := header.Fields()
+	for fields.Next() {
+		if r.moreVerbose {
 			log.Printf("%s: %s\n", fields.Key(), fields.Value())
 		}
-		log.Println("---END RESCAN HEADERS---")
+		if strings.ToLower(fields.Key()) == "x-gmail-import" {
+			gmailImport = true
+		}
+	}
+
+	if r.moreVerbose {
+		log.Println("---END RESCAN MESSAGE HEADERS---")
 	}
 
 	keys := getKeys(header)
@@ -832,7 +855,7 @@ func (r *Rescan) rescanMessage(index int) error {
 	}
 
 	var response RspamdResponse
-	err = r.requestRescan(index, fromAddr, deliveredToAddr, senderIP, rescanMessage, &response)
+	err = r.requestRescan(index, fromAddr, deliveredToAddr, senderIP, rescanMessage, &response, gmailImport)
 	if err != nil {
 		return fmt.Errorf("requestRescan: %v", err)
 	}
@@ -964,15 +987,59 @@ func (r *Rescan) prepareRescanMessage(header mail.Header, lines *[]string) (*[]b
 	return &rescanContent, senderIP, nil
 }
 
-func (r *Rescan) requestRescan(index int, fromAddr, deliveredToAddr, senderIP string, content *[]byte, response *RspamdResponse) error {
+func (r *Rescan) requestRescan(index int, fromAddr, deliveredToAddr, senderIP string, content *[]byte, response *RspamdResponse, gmailImport bool) error {
+
+	disabledGroups := make(map[string]bool)
+	for _, group := range r.disabledGroups {
+		disabledGroups[group] = true
+	}
+	if gmailImport {
+		for _, group := range r.gmailImportDisabledGroups {
+			disabledGroups[group] = true
+		}
+	}
+	disabledSymbols := make(map[string]bool)
+	for _, symbol := range r.disabledSymbols {
+		disabledSymbols[symbol] = true
+	}
+	if gmailImport {
+		for _, symbol := range r.gmailImportDisabledGroups {
+			disabledSymbols[symbol] = true
+		}
+	}
+
+	settings := make(map[string][]string)
+
+	if len(disabledGroups) > 0 {
+		groups := []string{}
+		for group, _ := range disabledGroups {
+			groups = append(groups, group)
+		}
+		settings["groups_disabled"] = groups
+	}
+	if len(disabledSymbols) > 0 {
+		symbols := []string{}
+		for symbol, _ := range disabledSymbols {
+			symbols = append(symbols, symbol)
+		}
+		settings["symbols_disabled"] = symbols
+	}
 
 	requestHeaders := map[string]string{
-		"Settings":   `{"symbols_disabled": ["DATE_IN_PAST", "SPAM_FLAG"]}`,
 		"IP":         senderIP,
 		"From":       fromAddr,
 		"Rcpt":       deliveredToAddr,
 		"Hostname":   r.hostname,
 		"Deliver-To": r.username,
+	}
+
+	if len(settings) > 0 {
+		settingsData, err := json.Marshal(settings)
+		if err != nil {
+			return fmt.Errorf("rspamd setting format failed: %v", err)
+		}
+		log.Printf("settingsData=%s\n", string(settingsData))
+		requestHeaders["Settings"] = string(settingsData)
 	}
 
 	_, err := r.rspamd.Post("/rspamc/checkv2", content, response, &requestHeaders)

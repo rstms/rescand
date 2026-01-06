@@ -7,7 +7,9 @@ debug: false
 validator_verbose: true
 validator_insecure: true
 
-filterctld_url: https://mailqueue.mailcapsule.io:4443
+filterctld_url: https://capsule.mailcapsule.io:4443
+
+rspamd_url: https://mailqueue.mailcapsule.io:4443
 mailqueue_hostname: mailqueue.mailcapsule.io
 
 backup_enabled: true
@@ -17,8 +19,10 @@ dovecot_timeout_seconds: 2
 
 doveadm_url: http://127.0.0.1:2018
 doveadm_api_key: "Authorization"
-#doveadm_verbose: true
-#doveadm_debug: false
+
+doveadm_verbose: true
+doveadm_more_verbose: true
+doveadm_debug: true
 passwd_file: testdata/master.passwd
 
 test:

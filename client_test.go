@@ -9,8 +9,7 @@ import (
 
 func TestScanBooks(t *testing.T) {
 	InitializeTests(t)
-	url := viper.GetString("filterctld_url")
-	filterctl, err := NewAPIClient(url, nil)
+	filterctl, err := NewFilterctlClient()
 	require.Nil(t, err)
 	username := viper.GetString("test.email")
 	books, err := filterctl.ScanAddressBooks(username, username)
@@ -21,8 +20,7 @@ func TestScanBooks(t *testing.T) {
 
 func TestScanSpamClass(t *testing.T) {
 	InitializeTests(t)
-	url := viper.GetString("filterctld_url")
-	filterctl, err := NewAPIClient(url, nil)
+	filterctl, err := NewFilterctlClient()
 	require.Nil(t, err)
 	username := viper.GetString("test.email")
 	class, err := filterctl.ScanSpamClass(username, float32(900))
