@@ -989,7 +989,6 @@ func (r *Rescan) prepareRescanMessage(header mail.Header, lines *[]string) (*[]b
 
 func (r *Rescan) requestRescan(index int, fromAddr, deliveredToAddr, senderIP string, content *[]byte, response *RspamdResponse, gmailImport bool) error {
 
-	log.Printf("requestRescan: gmailImport=%v\n", gmailImport)
 	disabledGroups := make(map[string]bool)
 	for _, group := range r.disabledGroups {
 		disabledGroups[group] = true
@@ -1004,7 +1003,7 @@ func (r *Rescan) requestRescan(index int, fromAddr, deliveredToAddr, senderIP st
 		disabledSymbols[symbol] = true
 	}
 	if gmailImport {
-		for _, symbol := range r.gmailImportDisabledGroups {
+		for _, symbol := range r.gmailImportDisabledSymbols {
 			disabledSymbols[symbol] = true
 		}
 	}
