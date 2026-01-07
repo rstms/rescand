@@ -559,16 +559,42 @@ func (r *Rescan) deleteRescanMailbox() error {
 
 func (r *Rescan) importMessages() ([]RescanImportAction, error) {
 
-	actions := []RescanImportAction{}
 	if r.verbose {
 		log.Printf("Importing rescanned messages from %s", r.outDir)
 	}
+	actions := []RescanImportAction{}
+
+	rescanActions, err := r.runSieve(r.sieveScript)
+	if err != nil {
+		return nil, fmt.Errorf("runSieve (rescan) failed with: %v", err)
+	}
+	log.Printf("rescan sieve actions: %s\n", FormatJSON(rescanActions))
+	actions = append(actions, rescanActions...)
+	userSieveScript := filepath.Join("/", "home", r.username, ".dovecot.sieve")
+	userActions, err := r.runSieve(userSieveScript)
+	if err != nil {
+		return nil, fmt.Errorf("runSieve (user) failed with: %v", err)
+	}
+	log.Printf("user sieve actions: %s\n", FormatJSON(userActions))
+	actions = append(actions, userActions...)
+	return actions, nil
+}
+
+func (r *Rescan) runSieve(sieveScript string) ([]RescanImportAction, error) {
+
+	actions := []RescanImportAction{}
+
+	if !IsFile(sieveScript) {
+		log.Printf("sieve script not found: %s\n", sieveScript)
+		return actions, nil
+	}
+	log.Printf("running sieve script: %s\n", sieveScript)
 	// /usr/local/bin/sieve-filter -e -W -u ${user} -m ${mailbox} ${sieve_script} ${mailbox}.rescan
 	args := []string{}
 	if r.sieveOptions != "" {
 		args = append(args, strings.Split(r.sieveOptions, " ")...)
 	}
-	args = append(args, []string{"-e", "-W", "-u", r.username, "-m", r.mailBox, r.sieveScript, r.outBox}...)
+	args = append(args, []string{"-e", "-W", "-u", r.username, "-m", r.mailBox, sieveScript, r.outBox}...)
 	cmd := exec.Command(r.sieveFilter, args...)
 	cmdLine := strings.Join(cmd.Args, " ")
 	if r.verbose {
@@ -578,22 +604,19 @@ func (r *Rescan) importMessages() ([]RescanImportAction, error) {
 	cmd.Stdout = &oBuf
 	cmd.Stderr = &eBuf
 	err := cmd.Run()
-	if err != nil {
-		log.Printf("Failed import command: '%s'\n", cmdLine)
-		return actions, fmt.Errorf("Failed executing sieve-filter command: %v", err)
-	}
-	exitCode := cmd.ProcessState.ExitCode()
-
 	if r.moreVerbose {
 		logLines("sieve-filter-stdout", oBuf.String())
 		logLines("sieve-filter-stderr", eBuf.String())
 	}
-
+	if err != nil {
+		log.Printf("Failed executing command: '%s'\n", cmdLine)
+		return actions, fmt.Errorf("Failed executing sieve-filter command: %v", err)
+	}
+	exitCode := cmd.ProcessState.ExitCode()
 	if exitCode != 0 {
 		log.Printf("Error: import command '%s' exited %d\n", cmdLine, exitCode)
 		return actions, fmt.Errorf("Import command failed with exit code %d", exitCode)
 	}
-
 	for _, line := range strings.Split(eBuf.String(), "\n") {
 		fields := SIEVE_ACTION_PATTERN.FindStringSubmatch(line)
 		if len(fields) > 1 {
@@ -607,7 +630,6 @@ func (r *Rescan) importMessages() ([]RescanImportAction, error) {
 			actions = append(actions, action)
 		}
 	}
-
 	return actions, nil
 }
 
