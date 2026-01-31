@@ -134,7 +134,8 @@ type SieveTraceResponse struct {
 
 type UsageResponse struct {
 	Response
-	Usage string
+	Commands []string
+	Help     []string
 }
 
 func fail(w http.ResponseWriter, user, request, message string, status int) {
@@ -441,12 +442,18 @@ func handleGetUsage(w http.ResponseWriter, r *http.Request) {
 		fail(w, username, "filterctl usage failed", fmt.Sprintf("%v", err), 500)
 		return
 	}
+
 	var response UsageResponse
+	err = json.Unmarshal(obuf.Bytes(), &response)
+	if err != nil {
+		fail(w, username, "usage parse failed", fmt.Sprintf("%v", err), 500)
+		return
+	}
+
 	response.Success = true
 	response.User = username
 	response.Message = "usage response"
 	response.Request = "usage request"
-	response.Usage = obuf.String()
 	succeed(w, response.Message, &response)
 }
 
