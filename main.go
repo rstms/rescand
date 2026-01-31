@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -129,6 +130,11 @@ type ClassesRequest struct {
 type SieveTraceResponse struct {
 	Response
 	Enabled bool
+}
+
+type UsageResponse struct {
+	Response
+	Usage string
 }
 
 func fail(w http.ResponseWriter, user, request, message string, status int) {
@@ -425,15 +431,23 @@ func handleGetUsage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	log.Println("usage request")
 	// /usr/local/bin/filterctl --config /home/filterctl/.config/filterctl/filterctl.yaml usage
 	cmd := exec.Command("/usr/local/bin/filterctl", "--config", "/home/filterctl/.config/filterctl/filterctl.yaml", "usage")
-	w.WriteHeader(http.StatusOK)
-	cmd.Stdout = w
+	var obuf bytes.Buffer
+	cmd.Stdout = &obuf
 	err := cmd.Run()
 	if err != nil {
 		fail(w, username, "filterctl usage failed", fmt.Sprintf("%v", err), 500)
 		return
 	}
+	var response UsageResponse
+	response.Success = true
+	response.User = username
+	response.Message = "usage response"
+	response.Request = "usage request"
+	response.Usage = obuf.String()
+	succeed(w, response.Message, &response)
 }
 
 func handlePostClasses(w http.ResponseWriter, r *http.Request) {
