@@ -15,6 +15,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"os/user"
 	"path/filepath"
@@ -418,6 +419,23 @@ func handleGetClasses(w http.ResponseWriter, r *http.Request) {
 	succeed(w, response.Message, &response)
 }
 
+func handleGetUsage(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	username, ok := checkApiKey(w, r)
+	if !ok {
+		return
+	}
+	// /usr/local/bin/filterctl --config /home/filterctl/.config/filterctl/filterctl.yaml usage
+	cmd := exec.Command("/usr/local/bin/filterctl", "--config", "/home/filterctl/.config/filterctl/filterctl.yaml", "usage")
+	w.WriteHeader(http.StatusOK)
+	cmd.Stdout = w
+	err := cmd.Run()
+	if err != nil {
+		fail(w, username, "filterctl usage failed", fmt.Sprintf("%v", err), 500)
+		return
+	}
+}
+
 func handlePostClasses(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	username, ok := checkApiKey(w, r)
@@ -784,6 +802,7 @@ func runServer() {
 	http.HandleFunc("DELETE /address/{book}/{address}/", handleDeleteAddress)
 	http.HandleFunc("GET /userdump/", handleGetUserDump)
 	http.HandleFunc("GET /classes/", handleGetClasses)
+	http.HandleFunc("GET /usage/", handleGetUsage)
 	http.HandleFunc("POST /classes/", handlePostClasses)
 	http.HandleFunc("GET /sieve/trace/", handleGetSieveTrace)
 	http.HandleFunc("PUT /sieve/trace/", handlePutSieveTrace)
