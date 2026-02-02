@@ -73,7 +73,9 @@ type ClassResponse struct {
 
 type ScanResponse struct {
 	Response
-	Books []string `json:"Books"`
+	Book        string   `json:"Book"`
+	Books       []string `json:"Books"`
+	Whitelisted bool     `json:"Whitelisted"`
 }
 
 type RescanResponse struct {

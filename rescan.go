@@ -973,6 +973,8 @@ func (r *Rescan) prepareRescanMessage(header mail.Header, lines *[]string) (*[]b
 	// remove message headers before sending it to be rescanned
 	deleteKeys := []string{
 		"x-address-book",
+		"x-address-books",
+		"x-whitelisted",
 		"x-senderscore",
 		"x-spam",
 		"x-rspam",
@@ -1165,15 +1167,31 @@ func (r *Rescan) mungeHeaders(index int, headers *mail.Header, fromAddr, senderI
 
 	}
 
-	books, err := r.filterctl.ScanAddressBooks(r.Status.Request.Username, fromAddr)
+	headers.Del("X-Address-Book")
+	headers.Del("X-Address-Books")
+	headers.Del("X-Whitelisted")
+	book, books, whitelisted, err := r.filterctl.ScanAddressBooks(r.Status.Request.Username, fromAddr)
 	if err != nil {
 		log.Printf("mungeHeaders[%d] WARNING: ScanAddressBooks: %v\n", index, err)
-		headers.Del("X-Address-Book")
 	} else {
-		addressBookValue := strings.Join(books, ",")
-		headers.Add("X-Address-Book", addressBookValue)
-		if r.verbose {
-			log.Printf("mungeHeaders[%d] adding: X-Address-Book: %s\n", index, addressBookValue)
+		if whitelisted {
+			if r.verbose {
+				log.Printf("mungeHeaders[%d] adding: X-Whitelisted: yes\n", index)
+			}
+			headers.Add("X-Whitelisted", "yes")
+		}
+		if book != "" {
+			if r.verbose {
+				log.Printf("mungeHeaders[%d] adding: X-Address-Book: %s\n", index, book)
+			}
+			headers.Add("X-Address-Book", book)
+		}
+		if len(books) > 0 {
+			value := strings.Join(books, ",")
+			if r.verbose {
+				log.Printf("mungeHeaders[%d] adding: X-Address-Books: %s\n", index, value)
+			}
+			headers.Add("X-Address-Books", value)
 		}
 	}
 

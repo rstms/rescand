@@ -221,7 +221,7 @@ func (a *APIClient) request(method, path string, requestData, responseData inter
 	return "", nil
 }
 
-func (a *APIClient) ScanAddressBooks(username, address string) ([]string, error) {
+func (a *APIClient) ScanAddressBooks(username, address string) (string, []string, bool, error) {
 	var response ScanResponse
 
 	if a.verbose {
@@ -230,27 +230,28 @@ func (a *APIClient) ScanAddressBooks(username, address string) ([]string, error)
 
 	username, err := parseEmailAddress(username)
 	if err != nil {
-		return []string{}, err
+		return "", nil, false, err
 	}
 
 	address, err = parseEmailAddress(address)
 	if err != nil {
-		return []string{}, err
+		return "", nil, false, err
 	}
 
 	_, err = a.Get(fmt.Sprintf("/filterctl/scan/%s/%s/", username, address), &response)
 	if err != nil {
-		return []string{}, err
+		return "", nil, false, err
 	}
 
 	if !response.Success {
-		return []string{}, fmt.Errorf("filterctl books request failed: %v\n", response.Message)
+		return "", nil, false, fmt.Errorf("filterctl books request failed: %v\n", response.Message)
 	}
 
 	if a.verbose {
-		log.Printf("ScanAddressBooks returning: %v\n", response.Books)
+		log.Printf("ScanAddressBooks returning: %s %v %v\n", response.Book, response.Books, response.Whitelisted)
 	}
-	return response.Books, nil
+
+	return response.Book, response.Books, response.Whitelisted, nil
 }
 
 func (a *APIClient) ScanSpamClass(username string, score float32) (string, error) {
